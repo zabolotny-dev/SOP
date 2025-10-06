@@ -1,0 +1,316 @@
+openapi: 3.0.3
+info:
+  title: "Server Hosting API"
+  description: "REST API для витрины и управления серверами с поддержкой HATEOAS (HAL)."
+  version: "1.1.0"
+
+tags:
+  - name: "Plans"
+    description: "Витрина: доступные конфигурации серверов"
+  - name: "Servers"
+    description: "Управление серверами"
+
+paths:
+  /plans:
+    get:
+      tags: ["Plans"]
+      summary: "Получить список доступных планов"
+      operationId: listPlans
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: "Пагинированный список планов в формате HAL"
+          content:
+            application/hal+json:
+              schema:
+                $ref: "#/components/schemas/PlanCollectionResponse" # ИЗМЕНЕНО
+    post:
+      tags: ["Plans"]
+      summary: "Создание нового плана"
+      operationId: createPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerPlanCreateRequest"
+      responses:
+        "201":
+          description: "Новый план создан"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerPlan"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /plans/{planId}:
+    get:
+      tags: ["Plans"]
+      summary: "Получить детальную информацию о плане"
+      operationId: getPlanById
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "Детальная информация о плане в формате HAL"
+          content:
+            application/hal+json:
+              schema:
+                $ref: "#/components/schemas/ServerPlan"
+        "404":
+          description: "План не найден"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+
+  /servers:
+    get:
+      tags: ["Servers"]
+      summary: "Получить список всех заказанных серверов"
+      operationId: listServers
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: "Пагинированный список серверов в формате HAL"
+          content:
+            application/hal+json:
+              schema:
+                $ref: "#/components/schemas/ServerCollectionResponse" # ИЗМЕНЕНО
+    post:
+      tags: ["Servers"]
+      summary: "Заказать новый сервер"
+      operationId: orderServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderServerRequest"
+      responses:
+        "202":
+          description: "Запрос на создание сервера принят, возвращен ресурс сервера"
+          content:
+            application/hal+json:
+              schema:
+                $ref: "#/components/schemas/Server" # ИЗМЕНЕНО
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /servers/{serverId}:
+    get:
+      tags: ["Servers"]
+      summary: "Получить детальную информацию о сервере"
+      operationId: getServerById
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "Детальная информация о сервере в формате HAL"
+          content:
+            application/hal+json:
+              schema:
+                $ref: "#/components/schemas/Server" # ИЗМЕНЕНО
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /servers/{serverId}/actions:
+    post:
+      tags: ["Servers"]
+      summary: "Выполнить действие над сервером"
+      operationId: performServerAction
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerActionRequest"
+      responses:
+        "202":
+          description: "Команда принята к исполнению"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: "Действие невозможно выполнить в текущем состоянии сервера"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+
+components:
+  responses:
+    BadRequest:
+      description: "Некорректный запрос"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/StatusResponse"
+    NotFound:
+      description: "Ресурс не найден"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/StatusResponse"
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: "Номер запрашиваемой страницы"
+      required: false
+      schema:
+        type: integer
+        format: int32
+        default: 1
+        minimum: 1
+    PageSize:
+      name: pageSize
+      in: query
+      description: "Количество элементов на странице."
+      required: false
+      schema:
+        type: integer
+        format: int32
+        default: 10
+        minimum: 1
+
+  schemas:
+    Link:
+      type: object
+      properties:
+        href:
+          type: string
+          format: uri
+    Links:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/Link"
+      description: "Контейнер для гипермедиа-ссылок."
+
+    ServerPlan: # ОБЪЕДИНЕНАЯ СХЕМА
+      type: object
+      required: ["id", "name", "cpuCores", "ramMb", "diskGb"]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        name: { type: string }
+        cpuCores: { type: integer }
+        ramMb: { type: integer }
+        diskGb: { type: integer }
+        _links:
+          $ref: "#/components/schemas/Links"
+
+    ServerPlanCreateRequest:
+      type: object
+      required: ["name", "cpuCores", "ramMb", "diskGb"]
+      properties:
+        name: { type: string }
+        cpuCores: { type: integer }
+        ramMb: { type: integer }
+        diskGb: { type: integer }
+
+    PlanCollectionResponse: # ПЕРЕИМЕНОВАНО ИЗ PagedPlanResources
+      type: object
+      properties:
+        _embedded:
+          type: object
+          properties:
+            plans:
+              type: array
+              items: { $ref: "#/components/schemas/ServerPlan" } # ИЗМЕНЕНО
+        _links:
+          $ref: "#/components/schemas/Links"
+        page:
+          type: object
+          properties:
+            size: { type: integer }
+            totalElements: { type: integer, format: int64 }
+            totalPages: { type: integer }
+            number: { type: integer }
+
+    Server: # ОБЪЕДИНЕНАЯ СХЕМА
+      type: object
+      required: ["id", "name", "status", "planId", "createdAt"]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        name: { type: string }
+        status:
+          {
+            type: string,
+            enum: ["PENDING", "RUNNING", "STOPPED", "REBOOTING", "DELETING"],
+          }
+        planId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        _links:
+          $ref: "#/components/schemas/Links"
+
+    OrderServerRequest:
+      type: object
+      required: ["planId", "name"]
+      properties:
+        planId:
+          type: string
+          format: uuid
+          description: "ID плана с витрины (/plans)"
+        name:
+          type: string
+          description: "Имя, которое пользователь дает серверу"
+
+    ServerActionRequest:
+      type: object
+      required: ["action"]
+      properties:
+        action:
+          type: string
+          enum: ["start", "stop", "reboot", "delete"]
+
+    ServerCollectionResponse: # ПЕРЕИМЕНОВАНО ИЗ PagedServerResources
+      type: object
+      properties:
+        _embedded:
+          type: object
+          properties:
+            servers:
+              type: array
+              items: { $ref: "#/components/schemas/Server" } # ИЗМЕНЕНО
+        _links:
+          $ref: "#/components/schemas/Links"
+        page:
+          type: object
+          properties:
+            size: { type: integer }
+            totalElements: { type: integer, format: int64 }
+            totalPages: { type: integer }
+            number: { type: integer }
+
+    StatusResponse:
+      type: object
+      required: ["message"]
+      properties:
+        message: { type: string }
