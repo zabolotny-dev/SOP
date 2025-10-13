@@ -1,0 +1,64 @@
+enum ServerStatus {
+  PENDING
+  RUNNING
+  STOPPED
+  REBOOTING
+  DELETING
+}
+
+type Plan {
+  id: ID!
+  name: String!
+  cpuCores: Int!
+  ramMb: Int!
+  diskGb: Int!
+}
+
+type Server {
+  id: ID!
+  name: String!
+  status: ServerStatus!
+  planId: ID!
+  createdAt: String!
+  plan: Plan
+}
+
+type PlanCollection {
+  plans: [Plan!]!
+  totalElements: Int!
+  totalPages: Int!
+  currentPage: Int!
+  hasNextPage: Boolean!
+}
+
+type ServerCollection {
+  servers: [Server!]!
+  totalElements: Int!
+  totalPages: Int!
+  currentPage: Int!
+  hasNextPage: Boolean!
+}
+
+input CreatePlanInput {
+  name: String!
+  cpuCores: Int!
+  ramMb: Int!
+  diskGb: Int!
+}
+
+input OrderServerInput {
+  planId: ID!
+  name: String!
+}
+
+type Query {
+  plans(page: Int = 1, pageSize: Int = 10): PlanCollection!
+  servers(page: Int = 1, pageSize: Int = 10): ServerCollection!
+  plan(id: ID!): Plan
+  server(id: ID!): Server
+}
+
+type Mutation {
+  createPlan(input: CreatePlanInput!): Plan!
+  orderServer(input: OrderServerInput!): Server!
+}
