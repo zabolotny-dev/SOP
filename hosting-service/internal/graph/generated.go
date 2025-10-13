@@ -47,8 +47,9 @@ type DirectiveRoot struct {
 
 type ComplexityRoot struct {
 	Mutation struct {
-		CreatePlan  func(childComplexity int, input CreatePlanInput) int
-		OrderServer func(childComplexity int, input OrderServerInput) int
+		CreatePlan   func(childComplexity int, input CreatePlanInput) int
+		ManageServer func(childComplexity int, serverID string, action ServerAction) int
+		OrderServer  func(childComplexity int, input OrderServerInput) int
 	}
 
 	Plan struct {
@@ -95,6 +96,7 @@ type ComplexityRoot struct {
 type MutationResolver interface {
 	CreatePlan(ctx context.Context, input CreatePlanInput) (*Plan, error)
 	OrderServer(ctx context.Context, input OrderServerInput) (*Server, error)
+	ManageServer(ctx context.Context, serverID string, action ServerAction) (*Server, error)
 }
 type QueryResolver interface {
 	Plans(ctx context.Context, page *int, pageSize *int) (*PlanCollection, error)
@@ -136,6 +138,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.CreatePlan(childComplexity, args["input"].(CreatePlanInput)), true
+	case "Mutation.manageServer":
+		if e.complexity.Mutation.ManageServer == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_manageServer_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ManageServer(childComplexity, args["serverId"].(string), args["action"].(ServerAction)), true
 	case "Mutation.orderServer":
 		if e.complexity.Mutation.OrderServer == nil {
 			break
@@ -438,6 +451,12 @@ var sources = []*ast.Source{
   DELETING
 }
 
+enum ServerAction {
+  START
+  STOP
+  REBOOT
+}
+
 type Plan {
   id: ID!
   name: String!
@@ -493,6 +512,7 @@ type Query {
 type Mutation {
   createPlan(input: CreatePlanInput!): Plan!
   orderServer(input: OrderServerInput!): Server!
+  manageServer(serverId: ID!, action: ServerAction!): Server!
 }
 `, BuiltIn: false},
 }
@@ -510,6 +530,22 @@ func (ec *executionContext) field_Mutation_createPlan_args(ctx context.Context, 
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_manageServer_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "serverId", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["serverId"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "action", ec.unmarshalNServerAction2hostingᚑserviceᚋinternalᚋgraphᚐServerAction)
+	if err != nil {
+		return nil, err
+	}
+	args["action"] = arg1
 	return args, nil
 }
 
@@ -743,6 +779,61 @@ func (ec *executionContext) fieldContext_Mutation_orderServer(ctx context.Contex
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_orderServer_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_manageServer(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_manageServer,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().ManageServer(ctx, fc.Args["serverId"].(string), fc.Args["action"].(ServerAction))
+		},
+		nil,
+		ec.marshalNServer2ᚖhostingᚑserviceᚋinternalᚋgraphᚐServer,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_manageServer(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Server_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Server_name(ctx, field)
+			case "status":
+				return ec.fieldContext_Server_status(ctx, field)
+			case "planId":
+				return ec.fieldContext_Server_planId(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Server_createdAt(ctx, field)
+			case "plan":
+				return ec.fieldContext_Server_plan(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Server", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_manageServer_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3287,6 +3378,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "manageServer":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_manageServer(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -4232,6 +4330,16 @@ func (ec *executionContext) marshalNServer2ᚖhostingᚑserviceᚋinternalᚋgra
 		return graphql.Null
 	}
 	return ec._Server(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNServerAction2hostingᚑserviceᚋinternalᚋgraphᚐServerAction(ctx context.Context, v any) (ServerAction, error) {
+	var res ServerAction
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNServerAction2hostingᚑserviceᚋinternalᚋgraphᚐServerAction(ctx context.Context, sel ast.SelectionSet, v ServerAction) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) marshalNServerCollection2hostingᚑserviceᚋinternalᚋgraphᚐServerCollection(ctx context.Context, sel ast.SelectionSet, v ServerCollection) graphql.Marshaler {

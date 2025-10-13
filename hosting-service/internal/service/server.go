@@ -13,10 +13,10 @@ import (
 type ActionType string
 
 const (
-	ActionStart  ActionType = "start"
-	ActionStop   ActionType = "stop"
-	ActionReboot ActionType = "reboot"
-	ActionDelete ActionType = "delete"
+	ActionStart  ActionType = "START"
+	ActionStop   ActionType = "STOP"
+	ActionReboot ActionType = "REBOOT"
+	ActionDelete ActionType = "DELETE"
 )
 
 type CreateServerParams struct {
@@ -38,7 +38,7 @@ type ServerService interface {
 	Save(ctx context.Context, params CreateServerParams) (*dto.ServerPreview, error)
 	Search(ctx context.Context, page, pageSize int) (*dto.ServerSearch, error)
 	FindByID(ctx context.Context, ID uuid.UUID) (*dto.ServerPreview, error)
-	PerformAction(ctx context.Context, params PerformActionParams) error
+	PerformAction(ctx context.Context, params PerformActionParams) (*dto.ServerPreview, error)
 }
 
 type serverServiceImpl struct {
@@ -63,14 +63,13 @@ func (s *serverServiceImpl) FindByID(ctx context.Context, ID uuid.UUID) (*dto.Se
 	}, nil
 }
 
-func (s *serverServiceImpl) PerformAction(ctx context.Context, params PerformActionParams) error {
-
+func (s *serverServiceImpl) PerformAction(ctx context.Context, params PerformActionParams) (*dto.ServerPreview, error) {
 	server, err := s.serverRepository.FindByID(ctx, params.ServerID)
 	if err != nil {
 		if errors.Is(err, repository.ErrServerNotFound) {
-			return ErrServerNotFound
+			return nil, ErrServerNotFound
 		}
-		return err
+		return nil, err
 	}
 
 	switch params.Action {
@@ -83,14 +82,26 @@ func (s *serverServiceImpl) PerformAction(ctx context.Context, params PerformAct
 	case ActionDelete:
 		err = server.MarkForDeletion()
 	default:
-		return ErrInvalidAction
+		return nil, ErrInvalidAction
 	}
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return s.serverRepository.Save(ctx, server)
+	err = s.serverRepository.Save(ctx, server)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.ServerPreview{
+		ID:        server.ID,
+		PlanID:    server.PlanID,
+		Name:      server.Name,
+		Status:    string(server.Status),
+		CreatedAt: server.CreatedAt,
+	}, nil
 }
 
 func (s *serverServiceImpl) Save(ctx context.Context, params CreateServerParams) (*dto.ServerPreview, error) {

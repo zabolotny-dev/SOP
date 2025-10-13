@@ -27,10 +27,10 @@ const (
 
 // Defines values for ServerActionRequestAction.
 const (
-	Delete ServerActionRequestAction = "delete"
-	Reboot ServerActionRequestAction = "reboot"
-	Start  ServerActionRequestAction = "start"
-	Stop   ServerActionRequestAction = "stop"
+	DELETE ServerActionRequestAction = "DELETE"
+	REBOOT ServerActionRequestAction = "REBOOT"
+	START  ServerActionRequestAction = "START"
+	STOP   ServerActionRequestAction = "STOP"
 )
 
 // Link defines model for Link.
@@ -709,7 +709,7 @@ type PerformServerActionResponseObject interface {
 	VisitPerformServerActionResponse(w http.ResponseWriter) error
 }
 
-type PerformServerAction202JSONResponse StatusResponse
+type PerformServerAction202JSONResponse Server
 
 func (response PerformServerAction202JSONResponse) VisitPerformServerActionResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")

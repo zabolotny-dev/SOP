@@ -45,6 +45,24 @@ func (r *mutationResolver) OrderServer(ctx context.Context, input OrderServerInp
 	return toGraphQLServer(*server), nil
 }
 
+// ManageServer is the resolver for the manageServer field.
+func (r *mutationResolver) ManageServer(ctx context.Context, serverID string, action ServerAction) (*Server, error) {
+	serverUUID, err := uuid.Parse(serverID)
+	if err != nil {
+		return nil, err
+	}
+	server, err := r.ServerService.PerformAction(ctx, service.PerformActionParams{
+		ServerID: serverUUID,
+		Action:   service.ActionType(action),
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return toGraphQLServer(*server), nil
+}
+
 // Plans is the resolver for the plans field.
 func (r *queryResolver) Plans(ctx context.Context, page *int, pageSize *int) (*PlanCollection, error) {
 	p, ps := 1, 10

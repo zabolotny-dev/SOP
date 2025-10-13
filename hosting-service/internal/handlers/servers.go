@@ -71,7 +71,7 @@ func (h *ServersHandler) GetServerById(ctx context.Context, request api.GetServe
 }
 
 func (h *ServersHandler) PerformServerAction(ctx context.Context, request api.PerformServerActionRequestObject) (api.PerformServerActionResponseObject, error) {
-	err := h.serverService.PerformAction(ctx, service.PerformActionParams{
+	server, err := h.serverService.PerformAction(ctx, service.PerformActionParams{
 		ServerID: request.ServerId,
 		Action:   service.ActionType(request.Body.Action),
 	})
@@ -95,7 +95,5 @@ func (h *ServersHandler) PerformServerAction(ctx context.Context, request api.Pe
 		return nil, err
 	}
 
-	return api.PerformServerAction202JSONResponse(api.StatusResponse{
-		Message: "server changed status",
-	}), nil
+	return api.PerformServerAction202JSONResponse(assemblers.ToServer(*server)), nil
 }

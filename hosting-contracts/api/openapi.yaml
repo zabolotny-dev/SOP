@@ -148,11 +148,11 @@ paths:
               $ref: "#/components/schemas/ServerActionRequest"
       responses:
         "202":
-          description: "Команда принята к исполнению"
+          description: "Команда принята к исполнению, возвращено промежуточное состояние сервера"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatusResponse"
+                $ref: "#/components/schemas/Server"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -288,7 +288,7 @@ components:
       properties:
         action:
           type: string
-          enum: ["start", "stop", "reboot", "delete"]
+          enum: ["START", "STOP", "REBOOT", "DELETE"]
 
     ServerCollectionResponse: # ПЕРЕИМЕНОВАНО ИЗ PagedServerResources
       type: object

@@ -6,6 +6,12 @@ enum ServerStatus {
   DELETING
 }
 
+enum ServerAction {
+  START
+  STOP
+  REBOOT
+}
+
 type Plan {
   id: ID!
   name: String!
@@ -61,4 +67,5 @@ type Query {
 type Mutation {
   createPlan(input: CreatePlanInput!): Plan!
   orderServer(input: OrderServerInput!): Server!
+  manageServer(serverId: ID!, action: ServerAction!): Server!
 }
