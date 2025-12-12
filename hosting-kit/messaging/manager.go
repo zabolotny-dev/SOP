@@ -18,19 +18,17 @@ type MessageManager struct {
 	conn           *rabbitmq.Conn
 	consumers      []*rabbitmq.Consumer
 	publisher      *rabbitmq.Publisher
-	wg             *sync.WaitGroup
+	wg             sync.WaitGroup
 	handlerTimeout time.Duration
 }
 
-func NewMessageManager(url string, exchanges []ExchangeConfig, wg *sync.WaitGroup, handlerTimeout time.Duration) (*MessageManager, error) {
+func NewMessageManager(url string, exchanges []ExchangeConfig, handlerTimeout time.Duration) (*MessageManager, error) {
 	conn, err := rabbitmq.NewConn(url, rabbitmq.WithConnectionOptionsLogging)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
 
 	for _, ex := range exchanges {
-		log.Printf("Declaring exchange '%s' of type '%s'", ex.Name, ex.Type)
-
 		declarer, err := rabbitmq.NewPublisher(
 			conn,
 			rabbitmq.WithPublisherOptionsExchangeName(ex.Name),
@@ -57,7 +55,6 @@ func NewMessageManager(url string, exchanges []ExchangeConfig, wg *sync.WaitGrou
 		conn:           conn,
 		consumers:      []*rabbitmq.Consumer{},
 		publisher:      publisher,
-		wg:             wg,
 		handlerTimeout: handlerTimeout,
 	}, nil
 }
@@ -88,8 +85,6 @@ func (m *MessageManager) Subscribe(queueName, routingKey, exchangeName string, h
 	}
 
 	m.consumers = append(m.consumers, consumer)
-
-	log.Printf("Consumer registered for queue: %s", queueName)
 
 	rabbitHandler := func(d rabbitmq.Delivery) rabbitmq.Action {
 		ctx, cancel := context.WithTimeout(context.Background(), m.handlerTimeout)
@@ -133,7 +128,7 @@ func (m *MessageManager) Publish(exchangeName, routingKey string, data interface
 	)
 }
 
-func (m *MessageManager) Stop(ctx context.Context) {
+func (m *MessageManager) Stop(ctx context.Context) error {
 	for _, consumer := range m.consumers {
 		consumer.CloseWithContext(ctx)
 	}
@@ -141,5 +136,8 @@ func (m *MessageManager) Stop(ctx context.Context) {
 	m.wg.Wait()
 
 	m.publisher.Close()
-	m.conn.Close()
+	if err := m.conn.Close(); err != nil {
+		return err
+	}
+	return nil
 }

@@ -2,23 +2,21 @@ enum ServerStatus {
   PENDING
   RUNNING
   STOPPED
-  REBOOTING
-  DELETING
   PROVISION_FAILED
 }
 
 enum ServerAction {
   START
   STOP
-  REBOOT
+  DELETE
 }
 
 type Plan {
   id: ID!
   name: String!
   cpuCores: Int!
-  ramMb: Int!
-  diskGb: Int!
+  ramMB: Int!
+  diskGB: Int!
 }
 
 type Server {
@@ -33,18 +31,21 @@ type Server {
 
 type PlanCollection {
   plans: [Plan!]!
-  totalElements: Int!
-  totalPages: Int!
-  currentPage: Int!
-  hasNextPage: Boolean!
+  meta: CollectionMeta!
 }
 
 type ServerCollection {
   servers: [Server!]!
+  meta: CollectionMeta!
+}
+
+type CollectionMeta {
+  number: Int!
+  size: Int!
   totalElements: Int!
   totalPages: Int!
-  currentPage: Int!
   hasNextPage: Boolean!
+  hasPrevPage: Boolean!
 }
 
 input CreatePlanInput {
@@ -60,8 +61,8 @@ input OrderServerInput {
 }
 
 type Query {
-  plans(page: Int = 1, pageSize: Int = 10): PlanCollection!
-  servers(page: Int = 1, pageSize: Int = 10): ServerCollection!
+  plans(pg: Int! = 1, ps: Int! = 10): PlanCollection!
+  servers(pg: Int! = 1, ps: Int! = 10): ServerCollection!
   plan(id: ID!): Plan
   server(id: ID!): Server
 }

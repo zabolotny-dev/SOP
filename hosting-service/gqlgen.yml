@@ -2,11 +2,11 @@ schema:
   - ../hosting-contracts/graphql/schema.graphqls
 
 exec:
-  filename: internal/graph/generated.go
+  filename: cmd/server/graphql/generated.go
   package: graph
 
 model:
-  filename: internal/graph/models.go
+  filename: cmd/server/graphql/models.go
   package: graph
 
 models:
@@ -17,5 +17,5 @@ models:
 
 resolver:
   layout: follow-schema
-  dir: internal/graph
+  dir: cmd/server/graphql
   package: graph

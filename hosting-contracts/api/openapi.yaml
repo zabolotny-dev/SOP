@@ -29,7 +29,7 @@ paths:
           content:
             application/hal+json:
               schema:
-                $ref: "#/components/schemas/PlanCollectionResponse" # ИЗМЕНЕНО
+                $ref: "#/components/schemas/PlanCollectionResponse"
     post:
       tags: ["Plans"]
       summary: "Создание нового плана"
@@ -89,7 +89,7 @@ paths:
           content:
             application/hal+json:
               schema:
-                $ref: "#/components/schemas/ServerCollectionResponse" # ИЗМЕНЕНО
+                $ref: "#/components/schemas/ServerCollectionResponse"
     post:
       tags: ["Servers"]
       summary: "Заказать новый сервер"
@@ -106,7 +106,7 @@ paths:
           content:
             application/hal+json:
               schema:
-                $ref: "#/components/schemas/Server" # ИЗМЕНЕНО
+                $ref: "#/components/schemas/Server"
         "400":
           $ref: "#/components/responses/BadRequest"
 
@@ -128,7 +128,7 @@ paths:
           content:
             application/hal+json:
               schema:
-                $ref: "#/components/schemas/Server" # ИЗМЕНЕНО
+                $ref: "#/components/schemas/Server"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -191,7 +191,6 @@ components:
       required: false
       schema:
         type: integer
-        format: int32
         default: 1
         minimum: 1
     PageSize:
@@ -201,13 +200,14 @@ components:
       required: false
       schema:
         type: integer
-        format: int32
         default: 10
         minimum: 1
 
   schemas:
+    # --- HAL Structures ---
     Link:
       type: object
+      required: ["href"]
       properties:
         href:
           type: string
@@ -222,11 +222,45 @@ components:
         $ref: "#/components/schemas/Link"
       description: "Контейнер для гипермедиа-ссылок."
 
-    ServerPlan: # ОБЪЕДИНЕНАЯ СХЕМА
+    # --- Page Structure ---
+    PageMetadata:
       type: object
-      required: ["id", "name", "cpuCores", "ramMb", "diskGb"]
+      description: "Информация о пагинации"
+      required:
+        [
+          "number",
+          "size",
+          "totalElements",
+          "totalPages",
+          "hasNextPage",
+          "hasPreviousPage",
+        ]
       properties:
-        id: { type: string, format: uuid, readOnly: true }
+        number:
+          type: integer
+          description: "Текущий номер страницы"
+        size:
+          type: integer
+          description: "Размер страницы"
+        totalElements:
+          type: integer
+          description: "Общее количество элементов"
+        totalPages:
+          type: integer
+          description: "Общее количество страниц"
+        hasNextPage:
+          type: boolean
+          description: "Есть ли следующая страница"
+        hasPreviousPage:
+          type: boolean
+          description: "Есть ли предыдущая страница"
+
+    # --- Domain Structures ---
+    ServerPlan:
+      type: object
+      required: ["id", "name", "cpuCores", "ramMb", "diskGb", "_links"]
+      properties:
+        id: { type: string, format: uuid }
         name: { type: string }
         cpuCores: { type: integer }
         ramMb: { type: integer }
@@ -243,43 +277,31 @@ components:
         ramMb: { type: integer }
         diskGb: { type: integer }
 
-    PlanCollectionResponse: # ПЕРЕИМЕНОВАНО ИЗ PagedPlanResources
+    PlanCollectionResponse:
       type: object
+      required: ["page"]
       properties:
         _embedded:
           type: object
           properties:
             plans:
               type: array
-              items: { $ref: "#/components/schemas/ServerPlan" } # ИЗМЕНЕНО
+              items: { $ref: "#/components/schemas/ServerPlan" }
         _links:
           $ref: "#/components/schemas/Links"
         page:
-          type: object
-          properties:
-            size: { type: integer }
-            totalElements: { type: integer, format: int64 }
-            totalPages: { type: integer }
-            number: { type: integer }
+          $ref: "#/components/schemas/PageMetadata"
 
-    Server: # ОБЪЕДИНЕНАЯ СХЕМА
+    Server:
       type: object
-      required: ["id", "name", "status", "planId", "createdAt"]
+      required: ["id", "name", "status", "planId", "createdAt", "_links"]
       properties:
-        id: { type: string, format: uuid, readOnly: true }
+        id: { type: string, format: uuid }
         name: { type: string }
         status:
           {
             type: string,
-            enum:
-              [
-                "PENDING",
-                "RUNNING",
-                "STOPPED",
-                "REBOOTING",
-                "DELETING",
-                "PROVISION_FAILED",
-              ],
+            enum: ["PENDING", "RUNNING", "STOPPED", "PROVISION_FAILED"],
           }
         planId: { type: string, format: uuid }
         IPv4Address: { type: string, format: ipv4 }
@@ -305,26 +327,22 @@ components:
       properties:
         action:
           type: string
-          enum: ["START", "STOP", "REBOOT", "DELETE"]
+          enum: ["START", "STOP", "DELETE"]
 
-    ServerCollectionResponse: # ПЕРЕИМЕНОВАНО ИЗ PagedServerResources
+    ServerCollectionResponse:
       type: object
+      required: ["page"]
       properties:
         _embedded:
           type: object
           properties:
             servers:
               type: array
-              items: { $ref: "#/components/schemas/Server" } # ИЗМЕНЕНО
+              items: { $ref: "#/components/schemas/Server" }
         _links:
           $ref: "#/components/schemas/Links"
         page:
-          type: object
-          properties:
-            size: { type: integer }
-            totalElements: { type: integer, format: int64 }
-            totalPages: { type: integer }
-            number: { type: integer }
+          $ref: "#/components/schemas/PageMetadata"
 
     StatusResponse:
       type: object
