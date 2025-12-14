@@ -1,0 +1,16 @@
+.git
+.gitignore
+.idea
+.vscode
+*.swp
+*.swo
+.env
+.env.example
+server
+app
+*.exe
+*.test
+tmp
+coverage.out
+README.md
+.dockerignore

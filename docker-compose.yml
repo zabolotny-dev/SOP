@@ -1,0 +1,106 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: hosting-postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - hosting-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: hosting-rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - hosting-network
+
+  migrator:
+    build:
+      context: .
+      dockerfile: hosting-service/Dockerfile
+    container_name: hosting-migrator
+    command: ["/migrator", "migrate"]
+    environment:
+      - SERV_DB_USER=${POSTGRES_USER}
+      - SERV_DB_PASSWORD=${POSTGRES_PASSWORD}
+      - SERV_DB_HOST=${POSTGRES_HOST}:${POSTGRES_PORT}
+      - SERV_DB_NAME=${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hosting-network
+
+  hosting-service:
+    build:
+      context: .
+      dockerfile: hosting-service/Dockerfile
+    container_name: hosting-api
+    environment:
+      - SERV_DB_USER=${POSTGRES_USER}
+      - SERV_DB_PASSWORD=${POSTGRES_PASSWORD}
+      - SERV_DB_HOST=${POSTGRES_HOST}:${POSTGRES_PORT}
+      - SERV_DB_NAME=${POSTGRES_DB}
+      - SERV_AMQP_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT}/
+      - SERV_AMQP_QUEUENAME=${SERV_AMQP_QUEUENAME}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    networks:
+      - hosting-network
+
+  provisioning-service:
+    build:
+      context: .
+      dockerfile: hosting-provisioning-service/Dockerfile
+    container_name: hosting-provisioner
+    environment:
+      - PROV_AMQP_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT}/
+      - PROV_AMQP_QUEUENAME=${PROV_AMQP_QUEUENAME}
+      - PROV_APP_PROVISIONINGTIME=${PROV_APP_PROVISIONINGTIME}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hosting-network
+
+networks:
+  hosting-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
