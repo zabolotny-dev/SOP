@@ -13,16 +13,7 @@ pipeline {
             steps {
                 script {
                     echo "Запуск тестов..."
-                    
-                    sh """
-                        docker run --rm \
-                        -v "\$PWD":/workspace \
-                        -v go-mod-cache:/go/pkg/mod \
-                        -v go-build-cache:/root/.cache/go-build \
-                        -w /workspace/hosting-service \
-                        golang:1.24.4-alpine \
-                        go test -v ./...
-                    """
+                    sh 'docker build -f Dockerfile.test .'
                 }
             }
         }
@@ -30,14 +21,7 @@ pipeline {
             steps {
                 script {
                     echo "Тесты прошли успешно. Деплоим..."
-                    
-                    sh '''
-                        if command -v docker-compose >/dev/null 2>&1; then
-                            docker-compose up -d --build --no-deps hosting-service provisioning-service migrator
-                        else
-                            docker compose up -d --build --no-deps hosting-service provisioning-service migrator
-                        fi
-                    '''
+                    sh 'docker-compose up -d --build --no-deps hosting-service provisioning-service migrator'
                 }
             }
         }
