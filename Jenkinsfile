@@ -21,7 +21,7 @@ pipeline {
             steps {
                 script {
                     echo "Тесты прошли успешно. Деплоим..."
-                    sh 'docker-compose up -d --build --no-deps hosting-service provisioning-service migrator'
+                    sh 'docker compose up -d --build --no-deps hosting-service provisioning-service migrator'
                 }
             }
         }
