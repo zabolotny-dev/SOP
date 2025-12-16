@@ -13,5 +13,10 @@ func RegisterRoutes(router *chi.Mux) {
 		w.Write([]byte("OK"))
 	})
 
+	router.Get("/test", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("TEST OK"))
+	})
+
 	router.Method(http.MethodGet, "/metrics", promhttp.Handler())
 }
