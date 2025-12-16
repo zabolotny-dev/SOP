@@ -23,7 +23,7 @@ pipeline {
                     echo "Применяем миграции базы данных..."
                     withCredentials([
                         string(credentialsId: 'sop-postgres-user', variable: 'POSTGRES_USER'),
-                        string(credentialsId: 'sop-postgres-password', variable: 'POSTGPOSTGRES_PASSWORD'),
+                        string(credentialsId: 'sop-postgres-password', variable: 'POSTGRES_PASSWORD'),
                         string(credentialsId: 'sop-postgres-db', variable: 'POSTGRES_DB'),
                         string(credentialsId: 'sop-postgres-host', variable: 'POSTGRES_HOST'),
                     ]) {
