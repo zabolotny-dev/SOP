@@ -26,6 +26,7 @@ pipeline {
                         string(credentialsId: 'sop-postgres-password', variable: 'POSTGRES_PASSWORD'),
                         string(credentialsId: 'sop-postgres-db', variable: 'POSTGRES_DB'),
                         string(credentialsId: 'sop-postgres-host', variable: 'POSTGRES_HOST'),
+                        string(credentialsId: 'sop-postgres-port', variable: 'POSTGRES_PORT')
                     ]) {
                         sh 'docker-compose run --rm migrator'
                     }
