@@ -163,22 +163,6 @@ services:
     networks:
       - hosting-network
 
-  jenkins:
-    build:
-      context: .
-      dockerfile: Dockerfile.jenkins
-    image: sop-jenkins:latest
-    container_name: hosting-jenkins
-    restart: always
-    ports:
-      - "8081:8080"
-      - "50000:50000"
-    volumes:
-      - jenkins_data:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - hosting-network
-
 networks:
   hosting-network:
     driver: bridge
@@ -188,4 +172,3 @@ volumes:
   rabbitmq_data:
   prometheus_data:
   grafana_data:
-  jenkins_data:
