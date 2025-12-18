@@ -1,35 +1,34 @@
 # Hosting Service
 
 Сервис для управления тарифными планами и серверами.
-Проект реализован с использованием архитектурного подхода **Package Oriented Design** и принципов **Clean Architecture**.
 
-## Архитектура
+## Общая информация
 
-Приложение построено как модульный монолит. Кодовая база организована вокруг бизнес-доменов, а не технических слоев.
+Проект написан на Go в стиле, близком к рекомендациям Ardan Labs:  
+код организован по бизнес-доменам (вертикальные срезы), бизнес-логика находится в пакетах `internal/plan` и `internal/server` и не зависит от транспортных слоёв и инфраструктуры.
 
-**Ключевые архитектурные решения:**
+Транспортные слои (REST API на Chi + oapi-codegen, GraphQL на gqlgen, обработка событий RabbitMQ) подключаются в `main.go` через dependency injection.
 
-- **Package Oriented Design:** Логика инкапсулирована в доменных пакетах (`internal/server`, `internal/plan`). Зависимости направлены внутрь, бизнес-логика не зависит от транспорта.
-- **Hexagonal Architecture:** Транспортный слой (REST, GraphQL, RabbitMQ) отделен от бизнес-логики. Это позволяет менять протоколы взаимодействия без изменения ядра приложения.
-- **Dependency Injection:** Явное внедрение зависимостей в `main.go`. Глобальное состояние отсутствует.
+Асинхронное выделение IP-адреса реализовано через отдельный сервис `hosting-provisioning-service`, взаимодействие — по RabbitMQ с использованием контрактных структур событий.
 
-## Технологический стек
+## Технологии
 
-- **Язык:** Go 1.24.4
-- **База данных:** PostgreSQL (драйвер `pgx/v5`)
-- **Брокер сообщений:** RabbitMQ
-- **API:**
-  - **REST:** Chi Router + OAPI Codegen (OpenAPI v3)
-  - **GraphQL:** gqlgen
-- **Конфигурация:** ardanlabs/conf
+- Go 1.24
+- PostgreSQL (pgx/v5)
+- RabbitMQ
+- REST: Chi + oapi-codegen
+- GraphQL: gqlgen
+- Конфигурация: ardanlabs/conf
+- Миграции: goose
 
-## Структура проекта
+## Структура
 
-- `hosting-service/cmd/server/` — Точка входа, конфигурация и транспортный слой.
-- `hosting-service/cmd/migrator/` — CLI утилита для управления миграциями БД.
-- `hosting-service/internal/plan/` — Домен "Тарифные планы".
-- `hosting-service/internal/server/` — Домен "Серверы".
-- `hosting-service/internal/platform/` — Базовые технические возможности (Database connection, Middleware).
-- `hosting-contracts/` — Спецификации API (OpenAPI, GraphQL schemas).
-- `hosting-events-contract/` — Контракты асинхронного взаимодействия (структуры событий, топология очередей).
-- `hosting-kit/` — Общие инфраструктурные библиотеки (обертка над RabbitMQ).
+- `hosting-service/cmd/server` — точка входа и транспортные слои
+- `hosting-service/cmd/migrator` — CLI для миграций
+- `hosting-service/internal/plan` — бизнес-логика тарифных планов
+- `hosting-service/internal/server` — бизнес-логика серверов
+- `hosting-service/internal/platform` — общая инфраструктура (БД, middleware)
+- `hosting-contracts` — спецификации REST и GraphQL
+- `hosting-events-contract` — контракты событий RabbitMQ
+- `hosting-kit` — общая обёртка над RabbitMQ
+- `hosting-provisioning-service` — отдельный сервис provisioning'а
