@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"hosting-events-contract/topology"
+	"hosting-kit/debug"
 	"hosting-kit/messaging"
 	"hosting-provisioning-service/cmd/server/queue"
-	"hosting-provisioning-service/cmd/server/system"
 	"hosting-provisioning-service/internal/provisioning"
 	"hosting-provisioning-service/internal/provisioning/stores/provisionmsg"
 	"log"
@@ -18,9 +18,6 @@ import (
 	"time"
 
 	"github.com/ardanlabs/conf/v3"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -34,9 +31,6 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-
-	_ = godotenv.Load()
-
 	cfg := struct {
 		AMQP struct {
 			URL            string        `conf:"default:amqp://guest:guest@localhost:5672/,mask,env:AMQP_URL"`
@@ -48,7 +42,7 @@ func run(ctx context.Context) error {
 			ShutdownTimeout  time.Duration `conf:"default:20s"`
 		}
 		Web struct {
-			MetricsAddr string `conf:"default:0.0.0.0:7070,env:HTTP_PORT"`
+			DebugHost string `conf:"default:0.0.0.0:7010,env:HTTP_PORT"`
 		}
 	}{}
 
@@ -81,8 +75,15 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating rabbit manager: %w", err)
 	}
 
-	notifier := provisionmsg.NewNotifier(rqManager)
+	defer func() {
+		ctxShut, cancel := context.WithTimeout(ctx, cfg.App.ShutdownTimeout)
+		defer cancel()
+		if err := rqManager.Stop(ctxShut); err != nil {
+			log.Printf("Failed to shutdown rabbit manager: %v", err)
+		}
+	}()
 
+	notifier := provisionmsg.NewNotifier(rqManager)
 	provisioningBus := provisioning.NewBusiness(cfg.App.ProvisioningTime, notifier)
 
 	err = queue.RegisterAll(rqManager, queue.Config{
@@ -93,47 +94,17 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("registering queue handlers: %w", err)
 	}
 
-	defer func() {
-		ctxShut, cancel := context.WithTimeout(ctx, cfg.App.ShutdownTimeout)
-		defer cancel()
-		if err := rqManager.Stop(ctxShut); err != nil {
-			log.Printf("Failed to shutdown rabbit manager: %v", err)
-		}
-	}()
-
-	mux := chi.NewRouter()
-	mux.Use(middleware.Logger)
-
-	system.RegisterRoutes(mux)
-
-	metricsServer := http.Server{
-		Addr:    cfg.Web.MetricsAddr,
-		Handler: mux,
-	}
-
-	metricsErrors := make(chan error, 1)
-
 	go func() {
-		log.Printf("main: HTTP API listening on %s", metricsServer.Addr)
-		metricsErrors <- metricsServer.ListenAndServe()
+		if err := http.ListenAndServe(cfg.Web.DebugHost, debug.Mux()); err != nil {
+			log.Println("Debug server error")
+		}
 	}()
 
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
-	select {
-	case err := <-metricsErrors:
-		return fmt.Errorf("metrics error: %w", err)
-	case sig := <-shutdown:
-		log.Printf("main: %v : Start shutdown", sig)
-		ctxShut, cancel := context.WithTimeout(context.Background(), cfg.App.ShutdownTimeout)
-		defer cancel()
-
-		if err := metricsServer.Shutdown(ctxShut); err != nil {
-			metricsServer.Close()
-			return fmt.Errorf("could not stop http server gracefully: %w", err)
-		}
-	}
+	<-shutdown
+	log.Println("Shutdown signal received, exiting...")
 
 	return nil
 }

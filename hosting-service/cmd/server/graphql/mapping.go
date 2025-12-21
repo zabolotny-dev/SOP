@@ -1,4 +1,4 @@
-package graph
+package graphql
 
 import (
 	"hosting-service/internal/plan"

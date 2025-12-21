@@ -57,7 +57,7 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/ardanlabs/conf/v3 v3.9.0
 	github.com/oapi-codegen/runtime v1.1.2 // indirect
-	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/swaggo/http-swagger v1.3.4
 	golang.org/x/text v0.29.0 // indirect
 )

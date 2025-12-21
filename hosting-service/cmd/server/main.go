@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"hosting-events-contract/topology"
+	"hosting-kit/debug"
 	"hosting-kit/messaging"
-	graph "hosting-service/cmd/server/graphql"
+	"hosting-service/cmd/server/graphql"
 	"hosting-service/cmd/server/queue"
 	"hosting-service/cmd/server/rest"
-	"hosting-service/cmd/server/system"
 	"hosting-service/internal/plan"
 	"hosting-service/internal/plan/stores/plandb"
 	"hosting-service/internal/platform/database"
@@ -52,6 +52,7 @@ func run(ctx context.Context) error {
 		}
 		Web struct {
 			APIHost      string        `conf:"default:0.0.0.0:8080,env:HTTP_PORT"`
+			DebugHost    string        `conf:"default:0.0.0.0:8010,env:HTTP_PORT"`
 			ReadTimeout  time.Duration `conf:"default:5s"`
 			WriteTimeout time.Duration `conf:"default:10s"`
 			IdleTimeout  time.Duration `conf:"default:120s"`
@@ -128,6 +129,12 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("registering queue handlers: %w", err)
 	}
 
+	go func() {
+		if err := http.ListenAndServe(cfg.Web.DebugHost, debug.Mux()); err != nil {
+			log.Println("Debug server error")
+		}
+	}()
+
 	mux := chi.NewRouter()
 
 	mux.Use(middleware.Recoverer)
@@ -139,12 +146,10 @@ func run(ctx context.Context) error {
 		ServerBus: serverBus,
 	})
 
-	graph.RegisterRoutes(mux, graph.HandlerConfig{
+	graphql.RegisterRoutes(mux, graphql.HandlerConfig{
 		PlanBus:   planBus,
 		ServerBus: serverBus,
 	})
-
-	system.RegisterRoutes(mux)
 
 	api := http.Server{
 		Addr:         cfg.Web.APIHost,

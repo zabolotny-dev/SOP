@@ -3,11 +3,11 @@ schema:
 
 exec:
   filename: cmd/server/graphql/generated.go
-  package: graph
+  package: graphql
 
 model:
   filename: cmd/server/graphql/models.go
-  package: graph
+  package: graphql
 
 models:
   Server:
@@ -18,4 +18,4 @@ models:
 resolver:
   layout: follow-schema
   dir: cmd/server/graphql
-  package: graph
+  package: graphql

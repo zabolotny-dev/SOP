@@ -5,10 +5,10 @@ global:
 scrape_configs:
   - job_name: "hosting-service"
     static_configs:
-      - targets: ["hosting-api:8080"]
+      - targets: ["hosting-api:8010"]
     metrics_path: "/metrics"
 
   - job_name: "provisioning-service"
     static_configs:
-      - targets: ["hosting-provisioner:7070"]
+      - targets: ["hosting-provisioner:7010"]
     metrics_path: "/metrics"
