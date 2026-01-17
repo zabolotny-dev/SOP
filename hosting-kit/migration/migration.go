@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"embed"
-	"fmt"
 
 	"github.com/pressly/goose/v3"
 )
@@ -13,7 +12,7 @@ func setup(fs embed.FS) error {
 	goose.SetBaseFS(fs)
 
 	if err := goose.SetDialect("postgres"); err != nil {
-		return fmt.Errorf("failed to set dialect: %w", err)
+		return err
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,6 +26,7 @@ func Open(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	}
 
 	poolConfig.MaxConns = int32(cfg.MaxOpenConns)
+	poolConfig.ConnConfig.Tracer = otelpgx.NewTracer()
 	poolConfig.HealthCheckPeriod = 1 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)

@@ -14,8 +14,8 @@ import (
 )
 
 type Config struct {
-	PlanBus   *plan.Business
-	ServerBus *server.Business
+	PlanBus   plan.ExtBusiness
+	ServerBus server.ExtBusiness
 	Prefix    string
 }
 

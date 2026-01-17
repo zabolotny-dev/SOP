@@ -16,6 +16,8 @@ var (
 	ErrPoolNotFound       = errors.New("pool not found")
 )
 
+type Extension func(ExtBusiness) ExtBusiness
+
 type Storer interface {
 	AppendResource(ctx context.Context, r Resource, poolID uuid.UUID) (Pool, error)
 	SubtractResource(ctx context.Context, r Resource) (uuid.UUID, error)
@@ -23,14 +25,35 @@ type Storer interface {
 	FindAll(ctx context.Context, pg page.Page) ([]Pool, int, error)
 }
 
-type Business struct {
-	storer Storer
+type ExtBusiness interface {
+	CreatePool(ctx context.Context, p NewPool) (Pool, error)
+	ConsumeResource(ctx context.Context, r Resource) (uuid.UUID, error)
+	ReturnResource(ctx context.Context, r Resource, poolID uuid.UUID) error
+	AddResources(ctx context.Context, r Resource, poolID uuid.UUID) (Pool, error)
+	Search(ctx context.Context, pg page.Page) ([]Pool, int, error)
 }
 
-func NewBusiness(storer Storer) *Business {
-	return &Business{
-		storer: storer,
+type Business struct {
+	storer     Storer
+	extensions []Extension
+}
+
+func NewBusiness(storer Storer, extensions ...Extension) ExtBusiness {
+	b := &Business{
+		storer:     storer,
+		extensions: extensions,
 	}
+
+	extBus := ExtBusiness(b)
+
+	for i := len(extensions) - 1; i >= 0; i-- {
+		ext := extensions[i]
+		if ext != nil {
+			extBus = ext(extBus)
+		}
+	}
+
+	return extBus
 }
 
 func (b *Business) CreatePool(ctx context.Context, p NewPool) (Pool, error) {

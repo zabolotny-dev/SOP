@@ -1,0 +1,55 @@
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+  trace_idle_period: 10s
+  max_block_duration: 5m
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: docker-compose
+  storage:
+    path: /var/tempo/generator_wal
+    remote_write_flush_deadline: 1m
+  traces_storage:
+    path: /var/tempo/generator_traces
+  processor:
+    service_graphs:
+      dimensions: []
+    span_metrics:
+      dimensions: []
+    local_blocks: {}
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+      v2_encoding: snappy
+      search_encoding: snappy
+    local:
+      path: /var/tempo/blocks
+
+querier:
+  frontend_worker:
+    frontend_address: tempo:9095
+
+overrides:
+  metrics_generator_processors: 
+    - service-graphs
+    - span-metrics
+    - local-blocks

@@ -16,7 +16,7 @@ type API struct {
 	root    *rootgrp.Handlers
 }
 
-func New(planBus *plan.Business, serverBus *server.Business, prefix string) *API {
+func New(planBus plan.ExtBusiness, serverBus server.ExtBusiness, prefix string) *API {
 	return &API{
 		plans:   plangrp.New(planBus, prefix),
 		servers: servergrp.New(serverBus, prefix),

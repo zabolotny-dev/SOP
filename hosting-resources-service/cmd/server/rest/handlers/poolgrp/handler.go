@@ -9,11 +9,11 @@ import (
 )
 
 type Handlers struct {
-	poolBus *pool.Business
+	poolBus pool.ExtBusiness
 	prefix  string
 }
 
-func New(poolBus *pool.Business, prefix string) *Handlers {
+func New(poolBus pool.ExtBusiness, prefix string) *Handlers {
 	return &Handlers{
 		poolBus: poolBus,
 		prefix:  prefix,

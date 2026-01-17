@@ -12,7 +12,7 @@ import (
 )
 
 type Config struct {
-	PoolBus *pool.Business
+	PoolBus pool.ExtBusiness
 	Prefix  string
 }
 

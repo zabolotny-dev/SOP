@@ -20,6 +20,8 @@ var (
 	ErrNoResources    = errors.New("not enough resources available")
 )
 
+type Extension func(ExtBusiness) ExtBusiness
+
 type ResourcesManager interface {
 	Consume(ctx context.Context, r Resources) (uuid.UUID, error)
 	Return(ctx context.Context, r Resources, poolID uuid.UUID) error
@@ -37,6 +39,17 @@ type Storer interface {
 	FindAll(ctx context.Context, pg page.Page) ([]Server, int, error)
 }
 
+type ExtBusiness interface {
+	FindByID(ctx context.Context, ID uuid.UUID) (Server, error)
+	Create(ctx context.Context, name string, planID uuid.UUID) (Server, error)
+	Search(ctx context.Context, pg page.Page) ([]Server, int, error)
+	Start(ctx context.Context, serverID uuid.UUID) (Server, error)
+	Stop(ctx context.Context, serverID uuid.UUID) (Server, error)
+	Delete(ctx context.Context, serverID uuid.UUID) (Server, error)
+	SetIPAddress(ctx context.Context, serverID uuid.UUID, ip string) error
+	SetProvisioningFailed(ctx context.Context, serverID uuid.UUID) error
+}
+
 type Provisioner interface {
 	RequestIP(ctx context.Context, server Server) error
 }
@@ -46,15 +59,28 @@ type Business struct {
 	planBus     PlanFinder
 	provisioner Provisioner
 	resources   ResourcesManager
+	extensions  []Extension
 }
 
-func NewBusiness(storer Storer, planBus PlanFinder, provisioner Provisioner, resources ResourcesManager) *Business {
-	return &Business{
+func NewBusiness(storer Storer, planBus PlanFinder, provisioner Provisioner, resources ResourcesManager, extensions ...Extension) ExtBusiness {
+	b := &Business{
 		storer:      storer,
 		planBus:     planBus,
 		provisioner: provisioner,
 		resources:   resources,
+		extensions:  extensions,
 	}
+
+	extBus := ExtBusiness(b)
+
+	for i := len(extensions) - 1; i >= 0; i-- {
+		ext := extensions[i]
+		if ext != nil {
+			extBus = ext(extBus)
+		}
+	}
+
+	return extBus
 }
 
 func NewServer(planID uuid.UUID, poolID uuid.UUID, name string) (Server, error) {

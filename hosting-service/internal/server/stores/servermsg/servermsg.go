@@ -26,7 +26,7 @@ func (p *Publisher) RequestIP(ctx context.Context, server server.Server) error {
 		Hostname: server.Name,
 	}
 
-	if err := p.publisher.Publish(topology.CommandsExchange, commands.ProvisionRequestKey, command); err != nil {
+	if err := p.publisher.Publish(ctx, topology.CommandsExchange, commands.ProvisionRequestKey, command); err != nil {
 		return fmt.Errorf("msg: failed to queue server for provisioning: %w", err)
 	}
 

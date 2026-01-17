@@ -13,7 +13,7 @@ type API struct {
 	root  *rootgrp.Handlers
 }
 
-func New(poolBus *pool.Business, prefix string) *API {
+func New(poolBus pool.ExtBusiness, prefix string) *API {
 	return &API{
 		pools: poolgrp.New(poolBus, prefix),
 		root:  rootgrp.New(prefix),

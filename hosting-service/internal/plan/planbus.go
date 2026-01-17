@@ -15,20 +15,41 @@ var (
 	ErrPlanNotFound = errors.New("plan not found")
 )
 
+type Extension func(ExtBusiness) ExtBusiness
+
 type Storer interface {
 	FindByID(ctx context.Context, ID uuid.UUID) (Plan, error)
 	Create(ctx context.Context, plan Plan) error
 	FindAll(ctx context.Context, pg page.Page) ([]Plan, int, error)
 }
 
-type Business struct {
-	storer Storer
+type ExtBusiness interface {
+	FindByID(ctx context.Context, ID uuid.UUID) (Plan, error)
+	Create(ctx context.Context, params CreatePlanParams) (Plan, error)
+	Search(ctx context.Context, pg page.Page) ([]Plan, int, error)
 }
 
-func NewBusiness(storer Storer) *Business {
-	return &Business{
-		storer: storer,
+type Business struct {
+	storer     Storer
+	extensions []Extension
+}
+
+func NewBusiness(storer Storer, extensions ...Extension) ExtBusiness {
+	b := &Business{
+		storer:     storer,
+		extensions: extensions,
 	}
+
+	extBus := ExtBusiness(b)
+
+	for i := len(extensions) - 1; i >= 0; i-- {
+		ext := extensions[i]
+		if ext != nil {
+			extBus = ext(extBus)
+		}
+	}
+
+	return extBus
 }
 
 func NewPlan(params CreatePlanParams) (Plan, error) {

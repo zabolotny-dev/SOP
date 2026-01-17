@@ -11,10 +11,10 @@ import (
 )
 
 type handlers struct {
-	serverBus *server.Business
+	serverBus server.ExtBusiness
 }
 
-func new(serverBus *server.Business) *handlers {
+func new(serverBus server.ExtBusiness) *handlers {
 	return &handlers{
 		serverBus: serverBus,
 	}

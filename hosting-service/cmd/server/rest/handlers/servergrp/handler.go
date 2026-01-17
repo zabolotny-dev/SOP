@@ -9,11 +9,11 @@ import (
 )
 
 type Handlers struct {
-	serverBus *server.Business
+	serverBus server.ExtBusiness
 	prefix    string
 }
 
-func New(serverBus *server.Business, prefix string) *Handlers {
+func New(serverBus server.ExtBusiness, prefix string) *Handlers {
 	return &Handlers{
 		serverBus: serverBus,
 		prefix:    prefix,

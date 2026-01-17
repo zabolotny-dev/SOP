@@ -8,14 +8,17 @@ import (
 	"hosting-kit/database"
 	"hosting-kit/debug"
 	"hosting-kit/messaging"
+	"hosting-kit/mid"
+	"hosting-kit/otel"
 	"hosting-service/cmd/server/graphql"
 	"hosting-service/cmd/server/queue"
 	"hosting-service/cmd/server/rest"
 	"hosting-service/internal/plan"
+	"hosting-service/internal/plan/extensions/planotel"
 	"hosting-service/internal/plan/stores/plandb"
 	"hosting-service/internal/platform/grpc"
-	"hosting-service/internal/platform/mid"
 	"hosting-service/internal/server"
+	"hosting-service/internal/server/extensions/serverotel"
 	"hosting-service/internal/server/stores/serverdb"
 	"hosting-service/internal/server/stores/servergrpc"
 	"hosting-service/internal/server/stores/servermsg"
@@ -41,6 +44,10 @@ func main() {
 }
 
 func run(ctx context.Context) error {
+
+	// -------------------------------------------------------------------------
+	// Configuration
+
 	cfg := struct {
 		App struct {
 			ShutdownTimeout time.Duration `conf:"default:20s"`
@@ -69,6 +76,11 @@ func run(ctx context.Context) error {
 			Host    string        `conf:"default:hosting-resources-service:2001"`
 			Timeout time.Duration `conf:"default:5s"`
 		}
+		Tempo struct {
+			Host        string  `conf:"default:hosting-tempo:4317"`
+			ServiceName string  `conf:"default:hosting-service"`
+			Probability float64 `conf:"default:0.05"`
+		}
 	}{}
 
 	const prefix = "SERV"
@@ -81,6 +93,9 @@ func run(ctx context.Context) error {
 		}
 		return fmt.Errorf("parsing config: %w", err)
 	}
+
+	// -------------------------------------------------------------------------
+	// Database Support
 
 	db, err := database.Open(ctx, database.Config{
 		User:         cfg.DB.User,
@@ -95,12 +110,41 @@ func run(ctx context.Context) error {
 
 	defer db.Close()
 
+	// -------------------------------------------------------------------------
+	// Create GRPC Support
+
 	grpcConn, err := grpc.NewClient(cfg.Resources.Host)
 	if err != nil {
 		return fmt.Errorf("initializing grpc client: %w", err)
 	}
 
 	defer grpcConn.Close()
+
+	// -------------------------------------------------------------------------
+	// Start Tracing Support
+
+	traceProvider, teardown, err := otel.InitTracing(otel.Config{
+		ServiceName: cfg.Tempo.ServiceName,
+		Host:        cfg.Tempo.Host,
+		Probability: cfg.Tempo.Probability,
+	})
+	if err != nil {
+		return fmt.Errorf("starting tracing: %w", err)
+	}
+
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cfg.App.ShutdownTimeout)
+		defer cancel()
+
+		if err := teardown(cleanupCtx); err != nil {
+			log.Printf("telemetry shutdown error: %v", err)
+		}
+	}()
+
+	tracer := traceProvider.Tracer(cfg.Tempo.ServiceName)
+
+	// -------------------------------------------------------------------------
+	// Create RabbitMQ Support
 
 	rqManager, err := messaging.NewMessageManager(cfg.AMQP.URL, []messaging.ExchangeConfig{
 		{
@@ -115,7 +159,7 @@ func run(ctx context.Context) error {
 			Name: topology.DLXExchange,
 			Type: messaging.ExchangeDirect,
 		},
-	}, cfg.AMQP.HandlerTimeout)
+	}, cfg.AMQP.HandlerTimeout, tracer)
 	if err != nil {
 		return fmt.Errorf("initializing rabbitmq: %w", err)
 	}
@@ -128,32 +172,27 @@ func run(ctx context.Context) error {
 		}
 	}()
 
-	planStore := plandb.NewStore(db)
-	planBus := plan.NewBusiness(planStore)
+	// -------------------------------------------------------------------------
+	// Create Business Packages
 
+	planOtelExt := planotel.NewExtension()
+	planStore := plandb.NewStore(db)
+	planBus := plan.NewBusiness(planStore, planOtelExt)
+
+	serverOtelExt := serverotel.NewExtension()
 	serverPublisher := servermsg.NewPublisher(rqManager)
 	serverStore := serverdb.NewStore(db)
 	serverGrpc := servergrpc.NewGrpc(grpcConn, cfg.Resources.Timeout)
-	serverBus := server.NewBusiness(serverStore, planBus, serverPublisher, serverGrpc)
+	serverBus := server.NewBusiness(serverStore, planBus, serverPublisher, serverGrpc, serverOtelExt)
 
-	err = queue.RegisterAll(rqManager, queue.Config{
-		ServerBus: serverBus,
-		QueueName: cfg.AMQP.QueueName,
-	})
-	if err != nil {
-		return fmt.Errorf("registering queue handlers: %w", err)
-	}
-
-	go func() {
-		if err := http.ListenAndServe(cfg.Web.DebugHost, debug.Mux()); err != nil {
-			log.Println("Debug server error")
-		}
-	}()
+	// -------------------------------------------------------------------------
+	// Start API Service
 
 	mux := chi.NewRouter()
 
+	mux.Use(mid.Otel(tracer))
 	mux.Use(middleware.Recoverer)
-	mux.Use(middleware.Logger)
+	mux.Use(mid.Logger)
 	mux.Use(mid.Performance)
 
 	rest.RegisterRoutes(mux, rest.Config{
@@ -167,6 +206,14 @@ func run(ctx context.Context) error {
 		ServerBus: serverBus,
 	})
 
+	err = queue.RegisterAll(rqManager, queue.Config{
+		ServerBus: serverBus,
+		QueueName: cfg.AMQP.QueueName,
+	})
+	if err != nil {
+		return fmt.Errorf("registering queue handlers: %w", err)
+	}
+
 	api := http.Server{
 		Addr:         cfg.Web.APIHost,
 		Handler:      mux,
@@ -175,12 +222,23 @@ func run(ctx context.Context) error {
 		IdleTimeout:  cfg.Web.IdleTimeout,
 	}
 
-	serverErrors := make(chan error, 1)
+	serverErrors := make(chan error, 2)
 
 	go func() {
 		log.Printf("main: HTTP API listening on %s", api.Addr)
 		serverErrors <- api.ListenAndServe()
 	}()
+
+	// -------------------------------------------------------------------------
+	// Start Debug Service
+
+	go func() {
+		log.Printf("main: Debug server listening on %s", cfg.Web.DebugHost)
+		serverErrors <- http.ListenAndServe(cfg.Web.DebugHost, debug.Mux())
+	}()
+
+	// -------------------------------------------------------------------------
+	// Shutdown
 
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)

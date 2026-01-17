@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"hosting-kit/database"
 	"hosting-kit/debug"
+	"hosting-kit/mid"
+	"hosting-kit/otel"
 	"hosting-resources-service/cmd/server/grpc"
 	"hosting-resources-service/cmd/server/rest"
 	"hosting-resources-service/internal/pool"
+	"hosting-resources-service/internal/pool/extensions/poolotel"
 	"hosting-resources-service/internal/pool/stores/pooldb"
 	"log"
 	"net"
@@ -33,6 +36,10 @@ func main() {
 }
 
 func run(ctx context.Context) error {
+
+	// -------------------------------------------------------------------------
+	// Configuration
+
 	cfg := struct {
 		App struct {
 			ShutdownTimeout time.Duration `conf:"default:20s"`
@@ -53,6 +60,11 @@ func run(ctx context.Context) error {
 			WriteTimeout time.Duration `conf:"default:10s"`
 			IdleTimeout  time.Duration `conf:"default:120s"`
 		}
+		Tempo struct {
+			Host        string  `conf:"default:hosting-tempo:4317"`
+			ServiceName string  `conf:"default:resource-service"`
+			Probability float64 `conf:"default:0.05"`
+		}
 	}{}
 
 	const prefix = "RES"
@@ -65,6 +77,9 @@ func run(ctx context.Context) error {
 		}
 		return fmt.Errorf("parsing config: %w", err)
 	}
+
+	// -------------------------------------------------------------------------
+	// Database Support
 
 	db, err := database.Open(ctx, database.Config{
 		User:         cfg.DB.User,
@@ -79,19 +94,45 @@ func run(ctx context.Context) error {
 
 	defer db.Close()
 
-	poolStore := pooldb.NewStore(db)
-	poolBus := pool.NewBusiness(poolStore)
+	// -------------------------------------------------------------------------
+	// Start Tracing Support
 
-	go func() {
-		if err := http.ListenAndServe(cfg.Web.DebugHost, debug.Mux()); err != nil {
-			log.Println("Debug server error")
+	traceProvider, teardown, err := otel.InitTracing(otel.Config{
+		ServiceName: cfg.Tempo.ServiceName,
+		Host:        cfg.Tempo.Host,
+		Probability: cfg.Tempo.Probability,
+	})
+	if err != nil {
+		return fmt.Errorf("starting tracing: %w", err)
+	}
+
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cfg.App.ShutdownTimeout)
+		defer cancel()
+
+		if err := teardown(cleanupCtx); err != nil {
+			log.Printf("telemetry shutdown error: %v", err)
 		}
 	}()
 
+	tracer := traceProvider.Tracer(cfg.Tempo.ServiceName)
+
+	// -------------------------------------------------------------------------
+	// Create Business Packages
+
+	poolOtelExt := poolotel.NewExtension()
+	poolStore := pooldb.NewStore(db)
+	poolBus := pool.NewBusiness(poolStore, poolOtelExt)
+
+	// -------------------------------------------------------------------------
+	// Start API Service
+
 	mux := chi.NewRouter()
 
+	mux.Use(mid.Otel(tracer))
 	mux.Use(middleware.Recoverer)
-	mux.Use(middleware.Logger)
+	mux.Use(mid.Logger)
+	mux.Use(mid.Performance)
 
 	rest.RegisterRoutes(mux, rest.Config{
 		PoolBus: poolBus,
@@ -106,12 +147,15 @@ func run(ctx context.Context) error {
 		IdleTimeout:  cfg.Web.IdleTimeout,
 	}
 
-	serverErrors := make(chan error, 1)
+	serverErrors := make(chan error, 3)
 
 	go func() {
 		log.Printf("main: HTTP API listening on %s", api.Addr)
 		serverErrors <- api.ListenAndServe()
 	}()
+
+	// -------------------------------------------------------------------------
+	// Create GRPC Service
 
 	lis, err := net.Listen("tcp", cfg.Web.GRPCHost)
 	if err != nil {
@@ -120,6 +164,7 @@ func run(ctx context.Context) error {
 
 	grpcApp := grpc.New(grpc.Config{
 		PoolBus: poolBus,
+		Tracer:  tracer,
 	})
 
 	go func() {
@@ -128,6 +173,17 @@ func run(ctx context.Context) error {
 	}()
 
 	defer grpcApp.Stop()
+
+	// -------------------------------------------------------------------------
+	// Start Debug Service
+
+	go func() {
+		log.Printf("main: Debug server listening on %s", cfg.Web.DebugHost)
+		serverErrors <- http.ListenAndServe(cfg.Web.DebugHost, debug.Mux())
+	}()
+
+	// -------------------------------------------------------------------------
+	// Shutdown
 
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)

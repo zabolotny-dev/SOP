@@ -1,6 +1,7 @@
 package mid
 
 import (
+	"hosting-kit/otel"
 	"log"
 	"net/http"
 	"time"
@@ -17,7 +18,7 @@ func Performance(next http.Handler) http.Handler {
 		duration := time.Since(startTime)
 
 		if duration.Milliseconds() > limitMs {
-			log.Printf("Slow request detected: [%s] %s %s %dms", GetCorrelationID(r.Context()), r.Method, r.RequestURI, duration.Milliseconds())
+			log.Printf("Slow request detected: [%s] %s %s %dms", otel.GetTraceID(r.Context()), r.Method, r.RequestURI, duration.Milliseconds())
 		}
 	})
 }

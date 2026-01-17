@@ -12,10 +12,10 @@ import (
 )
 
 type handlers struct {
-	provBus *provisioning.Business
+	provBus provisioning.ExtBusiness
 }
 
-func new(provBus *provisioning.Business) *handlers {
+func new(provBus provisioning.ExtBusiness) *handlers {
 	return &handlers{
 		provBus: provBus,
 	}

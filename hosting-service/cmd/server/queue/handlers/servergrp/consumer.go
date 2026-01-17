@@ -9,7 +9,7 @@ import (
 )
 
 type Config struct {
-	ServerBus *server.Business
+	ServerBus server.ExtBusiness
 	QueueName string
 }
 

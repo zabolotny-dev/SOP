@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"hosting-kit/otel"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/wagslane/go-rabbitmq"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type MessageHandler func(ctx context.Context, body []byte, routingKey string) error
@@ -19,9 +23,10 @@ type MessageManager struct {
 	publisher      *rabbitmq.Publisher
 	wg             sync.WaitGroup
 	handlerTimeout time.Duration
+	tracer         trace.Tracer
 }
 
-func NewMessageManager(url string, exchanges []ExchangeConfig, handlerTimeout time.Duration) (*MessageManager, error) {
+func NewMessageManager(url string, exchanges []ExchangeConfig, handlerTimeout time.Duration, tracer trace.Tracer) (*MessageManager, error) {
 	conn, err := rabbitmq.NewConn(url, rabbitmq.WithConnectionOptionsLogging)
 	if err != nil {
 		return nil, err
@@ -56,12 +61,11 @@ func NewMessageManager(url string, exchanges []ExchangeConfig, handlerTimeout ti
 		consumers:      []*rabbitmq.Consumer{},
 		publisher:      publisher,
 		handlerTimeout: handlerTimeout,
+		tracer:         tracer,
 	}, nil
 }
 
-func (m *MessageManager) Subscribe(queueName, routingKey, exchangeName string, handler MessageHandler, dlq *DLQConfig,
-) error {
-
+func (m *MessageManager) Subscribe(queueName, routingKey, exchangeName string, handler MessageHandler, dlq *DLQConfig) error {
 	opts := []func(*rabbitmq.ConsumerOptions){
 		rabbitmq.WithConsumerOptionsRoutingKey(routingKey),
 		rabbitmq.WithConsumerOptionsExchangeName(exchangeName),
@@ -87,19 +91,47 @@ func (m *MessageManager) Subscribe(queueName, routingKey, exchangeName string, h
 	m.consumers = append(m.consumers, consumer)
 
 	rabbitHandler := func(d rabbitmq.Delivery) rabbitmq.Action {
-		ctx, cancel := context.WithTimeout(context.Background(), m.handlerTimeout)
+		ctx := context.Background()
+
+		ctx = ExtractTraceHeaders(ctx, d.Headers)
+
+		ctx, span := m.tracer.Start(ctx, "rabbitmq.consume")
+		defer span.End()
+
+		ctx = otel.InjectTracing(ctx, m.tracer)
+
+		span.SetAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.operation", "consume"),
+			attribute.String("messaging.destination", exchangeName),
+			attribute.String("messaging.routing_key", routingKey),
+			attribute.String("messaging.rabbitmq.queue", queueName),
+			attribute.Int("messaging.message.payload_size_bytes", len(d.Body)),
+		)
+
+		ctx, cancel := context.WithTimeout(ctx, m.handlerTimeout)
 		defer cancel()
 
 		err := handler(ctx, d.Body, d.RoutingKey)
 
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		} else {
+			span.SetStatus(codes.Ok, "")
+		}
+
 		if err == nil {
+			span.SetAttributes(attribute.String("messaging.result", "ack"))
 			return rabbitmq.Ack
 		}
 
 		if errors.Is(err, ErrPermanentFailure) {
+			span.SetAttributes(attribute.String("messaging.result", "nack_discard"))
 			return rabbitmq.NackDiscard
 		}
 
+		span.SetAttributes(attribute.String("messaging.result", "nack_requeue"))
 		return rabbitmq.NackRequeue
 	}
 
@@ -114,11 +146,13 @@ func (m *MessageManager) Subscribe(queueName, routingKey, exchangeName string, h
 	return nil
 }
 
-func (m *MessageManager) Publish(exchangeName, routingKey string, data interface{}) error {
+func (m *MessageManager) Publish(ctx context.Context, exchangeName, routingKey string, data interface{}) error {
 	eventBytes, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
+
+	headers := InjectTraceHeaders(ctx)
 
 	return m.publisher.Publish(
 		eventBytes,
@@ -126,6 +160,7 @@ func (m *MessageManager) Publish(exchangeName, routingKey string, data interface
 		rabbitmq.WithPublishOptionsContentType("application/json"),
 		rabbitmq.WithPublishOptionsExchange(exchangeName),
 		rabbitmq.WithPublishOptionsPersistentDelivery,
+		rabbitmq.WithPublishOptionsHeaders(headers),
 	)
 }
 

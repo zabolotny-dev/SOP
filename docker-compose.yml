@@ -42,6 +42,22 @@ services:
     networks:
       - hosting-network
 
+  tempo:
+    image: grafana/tempo:latest
+    container_name: hosting-tempo
+    restart: always
+    ports:
+      - "4317:4317"
+    environment:
+      - GOGC=80
+    volumes:
+      - tempo_data:/var/tempo
+      - ./tempo.yml:/etc/tempo/tempo.yml:ro
+    command:
+      - "-config.file=/etc/tempo/tempo.yml"
+    networks:
+      - hosting-network
+
   hosting-service-migrator:
     image: sop-hosting-service:latest
     container_name: hosting-service-migrator
@@ -86,6 +102,7 @@ services:
       - SERV_DB_NAME=${SERV_DB_NAME}
       - SERV_AMQP_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT}/
       - SERV_AMQP_QUEUENAME=${SERV_AMQP_QUEUENAME}
+      - SERV_TEMPO_PROBABILITY=${SERV_TEMPO_PROBABILITY}
     healthcheck:
       test:
         [
@@ -109,6 +126,8 @@ services:
         condition: service_healthy
       hosting-service-migrator:
         condition: service_completed_successfully
+      tempo:
+        condition: service_started
     networks:
       - hosting-network
 
@@ -140,6 +159,8 @@ services:
     depends_on:
       hosting-service:
         condition: service_healthy
+      tempo:
+        condition: service_started
     networks:
       - hosting-network
 
@@ -178,6 +199,8 @@ services:
         condition: service_completed_successfully
       hosting-service:
         condition: service_healthy
+      tempo:
+        condition: service_started
     networks:
       - hosting-network
 
@@ -214,8 +237,10 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yaml
     depends_on:
       - prometheus
+      - tempo
     networks:
       - hosting-network
 
@@ -228,3 +253,4 @@ volumes:
   rabbitmq_data:
   prometheus_data:
   grafana_data:
+  tempo_data:

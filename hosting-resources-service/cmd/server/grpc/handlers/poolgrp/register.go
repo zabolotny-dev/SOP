@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func Register(serv *grpc.Server, poolBus *pool.Business) {
+func Register(serv *grpc.Server, poolBus pool.ExtBusiness) {
 	apiImpl := New(poolBus)
 	gen.RegisterResourcesServer(serv, apiImpl)
 }

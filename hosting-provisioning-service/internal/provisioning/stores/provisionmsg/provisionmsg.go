@@ -30,7 +30,7 @@ func (s *Notifier) NotifySuccess(ctx context.Context, serverID uuid.UUID, res pr
 		ProvisionedAt: res.ProvisionedAt,
 	}
 
-	if err := s.mgr.Publish(topology.EventsExchange, events.ProvisionSucceededKey, successEvent); err != nil {
+	if err := s.mgr.Publish(ctx, topology.EventsExchange, events.ProvisionSucceededKey, successEvent); err != nil {
 		return fmt.Errorf("failed to publish ServerProvisionedEvent: %w", err)
 	}
 	return nil
@@ -43,7 +43,7 @@ func (s *Notifier) NotifyFailure(ctx context.Context, serverID uuid.UUID, reason
 		FailedAt: failedAt,
 	}
 
-	if err := s.mgr.Publish(topology.EventsExchange, events.ProvisionFailedKey, failedEvent); err != nil {
+	if err := s.mgr.Publish(ctx, topology.EventsExchange, events.ProvisionFailedKey, failedEvent); err != nil {
 		return fmt.Errorf("failed to publish ServerProvisionFailedEvent: %w", err)
 	}
 	return nil

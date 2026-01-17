@@ -13,10 +13,10 @@ import (
 
 type Handlers struct {
 	gen.UnimplementedResourcesServer
-	poolBus *pool.Business
+	poolBus pool.ExtBusiness
 }
 
-func New(poolBus *pool.Business) *Handlers {
+func New(poolBus pool.ExtBusiness) *Handlers {
 	return &Handlers{
 		poolBus: poolBus,
 	}

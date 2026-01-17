@@ -9,7 +9,7 @@ import (
 )
 
 type Config struct {
-	ProvBus   *provisioning.Business
+	ProvBus   provisioning.ExtBusiness
 	QueueName string
 }
 
