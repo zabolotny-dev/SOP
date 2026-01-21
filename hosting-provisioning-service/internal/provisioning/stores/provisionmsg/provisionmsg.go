@@ -31,7 +31,7 @@ func (s *Notifier) NotifySuccess(ctx context.Context, serverID uuid.UUID, res pr
 	}
 
 	if err := s.mgr.Publish(ctx, topology.EventsExchange, events.ProvisionSucceededKey, successEvent); err != nil {
-		return fmt.Errorf("failed to publish ServerProvisionedEvent: %w", err)
+		return fmt.Errorf("msg: failed to publish ServerProvisionedEvent: %w", err)
 	}
 	return nil
 }
@@ -44,7 +44,7 @@ func (s *Notifier) NotifyFailure(ctx context.Context, serverID uuid.UUID, reason
 	}
 
 	if err := s.mgr.Publish(ctx, topology.EventsExchange, events.ProvisionFailedKey, failedEvent); err != nil {
-		return fmt.Errorf("failed to publish ServerProvisionFailedEvent: %w", err)
+		return fmt.Errorf("msg: failed to publish ServerProvisionFailedEvent: %w", err)
 	}
 	return nil
 }

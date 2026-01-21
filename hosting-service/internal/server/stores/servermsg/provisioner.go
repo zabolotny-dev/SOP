@@ -9,18 +9,17 @@ import (
 	"hosting-service/internal/server"
 )
 
-type Publisher struct {
+type Provisioner struct {
 	publisher *messaging.MessageManager
 }
 
-func NewPublisher(publisher *messaging.MessageManager) *Publisher {
-	return &Publisher{
+func NewProvisioner(publisher *messaging.MessageManager) *Provisioner {
+	return &Provisioner{
 		publisher: publisher,
 	}
 }
 
-func (p *Publisher) RequestIP(ctx context.Context, server server.Server) error {
-
+func (p *Provisioner) RequestIP(ctx context.Context, server server.Server) error {
 	command := commands.ProvisionServerCommand{
 		ServerID: server.ID,
 		Hostname: server.Name,

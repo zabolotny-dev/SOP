@@ -18,9 +18,14 @@ var (
 	ErrValidation     = errors.New("validation error")
 	ErrInvalidPlan    = errors.New("invalid plan provided")
 	ErrNoResources    = errors.New("not enough resources available")
+	ErrAccessDenied   = errors.New("access denied")
 )
 
 type Extension func(ExtBusiness) ExtBusiness
+
+type Notifier interface {
+	ServerUpdated(ctx context.Context, server Server)
+}
 
 type ResourcesManager interface {
 	Consume(ctx context.Context, r Resources) (uuid.UUID, error)
@@ -36,16 +41,16 @@ type Storer interface {
 	Create(ctx context.Context, server Server) error
 	Update(ctx context.Context, server Server) error
 	Delete(ctx context.Context, ID uuid.UUID) error
-	FindAll(ctx context.Context, pg page.Page) ([]Server, int, error)
+	FindAll(ctx context.Context, pg page.Page, userID uuid.UUID) ([]Server, int, error)
 }
 
 type ExtBusiness interface {
-	FindByID(ctx context.Context, ID uuid.UUID) (Server, error)
-	Create(ctx context.Context, name string, planID uuid.UUID) (Server, error)
-	Search(ctx context.Context, pg page.Page) ([]Server, int, error)
-	Start(ctx context.Context, serverID uuid.UUID) (Server, error)
-	Stop(ctx context.Context, serverID uuid.UUID) (Server, error)
-	Delete(ctx context.Context, serverID uuid.UUID) (Server, error)
+	FindByID(ctx context.Context, ID uuid.UUID, userID uuid.UUID) (Server, error)
+	Create(ctx context.Context, name string, planID uuid.UUID, userID uuid.UUID) (Server, error)
+	Search(ctx context.Context, pg page.Page, userID uuid.UUID) ([]Server, int, error)
+	Start(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (Server, error)
+	Stop(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (Server, error)
+	Delete(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (Server, error)
 	SetIPAddress(ctx context.Context, serverID uuid.UUID, ip string) error
 	SetProvisioningFailed(ctx context.Context, serverID uuid.UUID) error
 }
@@ -59,15 +64,18 @@ type Business struct {
 	planBus     PlanFinder
 	provisioner Provisioner
 	resources   ResourcesManager
+	notifier    Notifier
 	extensions  []Extension
 }
 
-func NewBusiness(storer Storer, planBus PlanFinder, provisioner Provisioner, resources ResourcesManager, extensions ...Extension) ExtBusiness {
+func NewBusiness(storer Storer, planBus PlanFinder, provisioner Provisioner,
+	resources ResourcesManager, notifier Notifier, extensions ...Extension) ExtBusiness {
 	b := &Business{
 		storer:      storer,
 		planBus:     planBus,
 		provisioner: provisioner,
 		resources:   resources,
+		notifier:    notifier,
 		extensions:  extensions,
 	}
 
@@ -83,7 +91,7 @@ func NewBusiness(storer Storer, planBus PlanFinder, provisioner Provisioner, res
 	return extBus
 }
 
-func NewServer(planID uuid.UUID, poolID uuid.UUID, name string) (Server, error) {
+func NewServer(planID uuid.UUID, poolID uuid.UUID, userID uuid.UUID, name string) (Server, error) {
 	trimmedName := strings.TrimSpace(name)
 	if trimmedName == "" {
 		return Server{}, fmt.Errorf("%w: server name cannot be empty", ErrValidation)
@@ -94,9 +102,13 @@ func NewServer(planID uuid.UUID, poolID uuid.UUID, name string) (Server, error) 
 	if poolID == uuid.Nil {
 		return Server{}, fmt.Errorf("%w: poolID cannot be nil", ErrValidation)
 	}
+	if userID == uuid.Nil {
+		return Server{}, fmt.Errorf("%w: ownerID cannot be nil", ErrValidation)
+	}
 
 	return Server{
 		ID:        uuid.New(),
+		OwnerID:   userID,
 		PlanID:    planID,
 		PoolID:    poolID,
 		Name:      trimmedName,
@@ -105,16 +117,20 @@ func NewServer(planID uuid.UUID, poolID uuid.UUID, name string) (Server, error) 
 	}, nil
 }
 
-func (s *Business) FindByID(ctx context.Context, ID uuid.UUID) (Server, error) {
+func (s *Business) FindByID(ctx context.Context, ID uuid.UUID, userID uuid.UUID) (Server, error) {
 	server, err := s.storer.FindByID(ctx, ID)
 	if err != nil {
 		return Server{}, fmt.Errorf("findbyid: %w", err)
 	}
 
+	if err := checkOwnership(server, userID); err != nil {
+		return Server{}, err
+	}
+
 	return server, nil
 }
 
-func (s *Business) Create(ctx context.Context, name string, planID uuid.UUID) (Server, error) {
+func (s *Business) Create(ctx context.Context, name string, planID uuid.UUID, userID uuid.UUID) (Server, error) {
 	planFound, err := s.planBus.FindByID(ctx, planID)
 	if err != nil {
 		if errors.Is(err, plan.ErrPlanNotFound) {
@@ -135,7 +151,7 @@ func (s *Business) Create(ctx context.Context, name string, planID uuid.UUID) (S
 		return Server{}, fmt.Errorf("resources.consume: %w", err)
 	}
 
-	server, err := NewServer(planID, poolID, name)
+	server, err := NewServer(planID, poolID, userID, name)
 	if err != nil {
 		return Server{}, err
 	}
@@ -152,8 +168,8 @@ func (s *Business) Create(ctx context.Context, name string, planID uuid.UUID) (S
 	return server, nil
 }
 
-func (s *Business) Search(ctx context.Context, pg page.Page) ([]Server, int, error) {
-	servers, count, err := s.storer.FindAll(ctx, pg)
+func (s *Business) Search(ctx context.Context, pg page.Page, userID uuid.UUID) ([]Server, int, error) {
+	servers, count, err := s.storer.FindAll(ctx, pg, userID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("search: %w", err)
 	}
@@ -161,10 +177,14 @@ func (s *Business) Search(ctx context.Context, pg page.Page) ([]Server, int, err
 	return servers, count, nil
 }
 
-func (s *Business) Start(ctx context.Context, serverID uuid.UUID) (Server, error) {
+func (s *Business) Start(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (Server, error) {
 	server, err := s.storer.FindByID(ctx, serverID)
 	if err != nil {
 		return Server{}, fmt.Errorf("start: %w", err)
+	}
+
+	if err := checkOwnership(server, userID); err != nil {
+		return Server{}, err
 	}
 
 	if server.Status != StatusStopped {
@@ -180,10 +200,14 @@ func (s *Business) Start(ctx context.Context, serverID uuid.UUID) (Server, error
 	return server, nil
 }
 
-func (s *Business) Stop(ctx context.Context, serverID uuid.UUID) (Server, error) {
+func (s *Business) Stop(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (Server, error) {
 	server, err := s.storer.FindByID(ctx, serverID)
 	if err != nil {
 		return Server{}, fmt.Errorf("stop: %w", err)
+	}
+
+	if err := checkOwnership(server, userID); err != nil {
+		return Server{}, err
 	}
 
 	if server.Status != StatusRunning {
@@ -199,10 +223,14 @@ func (s *Business) Stop(ctx context.Context, serverID uuid.UUID) (Server, error)
 	return server, nil
 }
 
-func (s *Business) Delete(ctx context.Context, serverID uuid.UUID) (Server, error) {
+func (s *Business) Delete(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (Server, error) {
 	server, err := s.storer.FindByID(ctx, serverID)
 	if err != nil {
 		return Server{}, fmt.Errorf("delete: %w", err)
+	}
+
+	if err := checkOwnership(server, userID); err != nil {
+		return Server{}, err
 	}
 
 	if server.Status != StatusStopped && server.Status != StatusRunning && server.Status != StatusProvisionFailed {
@@ -257,6 +285,8 @@ func (s *Business) SetIPAddress(ctx context.Context, serverID uuid.UUID, ip stri
 		return fmt.Errorf("setipaddress: %w", err)
 	}
 
+	s.notifier.ServerUpdated(ctx, server)
+
 	return nil
 }
 
@@ -276,5 +306,14 @@ func (s *Business) SetProvisioningFailed(ctx context.Context, serverID uuid.UUID
 		return fmt.Errorf("setprovisioningfailed: %w", err)
 	}
 
+	s.notifier.ServerUpdated(ctx, server)
+
+	return nil
+}
+
+func checkOwnership(srv Server, userID uuid.UUID) error {
+	if srv.OwnerID != userID {
+		return ErrAccessDenied
+	}
 	return nil
 }

@@ -55,6 +55,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ServerPlanCreateRequest"
+      security:
+        - cookieAuth: []
       responses:
         "201":
           description: "Новый план создан"
@@ -105,6 +107,8 @@ paths:
             application/hal+json:
               schema:
                 $ref: "#/components/schemas/ServerCollectionResponse"
+      security:
+        - cookieAuth: []
     post:
       tags: ["Servers"]
       summary: "Заказать новый сервер"
@@ -115,6 +119,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/OrderServerRequest"
+      security:
+        - cookieAuth: []
       responses:
         "202":
           description: "Запрос на создание сервера принят, возвращен ресурс сервера"
@@ -149,6 +155,8 @@ paths:
                 $ref: "#/components/schemas/Server"
         "404":
           $ref: "#/components/responses/NotFound"
+      security:
+          - cookieAuth: []
 
   /servers/{serverId}/actions:
     post:
@@ -185,6 +193,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusResponse"
+      security:
+        - cookieAuth: []
 
 components:
   responses:
@@ -226,6 +236,12 @@ components:
         type: integer
         default: 10
         minimum: 1
+
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: ory_kratos_session
 
   schemas:
     # --- HAL Structures ---

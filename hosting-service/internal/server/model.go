@@ -25,6 +25,7 @@ const (
 
 type Server struct {
 	ID          uuid.UUID
+	OwnerID     uuid.UUID
 	IPv4Address *string
 	PoolID      uuid.UUID
 	PlanID      uuid.UUID

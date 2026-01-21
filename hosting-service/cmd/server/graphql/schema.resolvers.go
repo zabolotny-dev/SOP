@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hosting-kit/auth"
 	"hosting-kit/page"
 	"hosting-service/internal/plan"
 	"hosting-service/internal/server"
@@ -17,6 +18,15 @@ import (
 
 // CreatePlan is the resolver for the createPlan field.
 func (r *mutationResolver) CreatePlan(ctx context.Context, input CreatePlanInput) (*Plan, error) {
+	claims, err := auth.GetClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if !claims.IsAdmin {
+		return nil, auth.ErrForbidden
+	}
+
 	newPlan, err := r.PlanBus.Create(ctx, plan.CreatePlanParams{
 		Name:     input.Name,
 		CPUCores: input.CPUCores,
@@ -36,12 +46,17 @@ func (r *mutationResolver) CreatePlan(ctx context.Context, input CreatePlanInput
 
 // OrderServer is the resolver for the orderServer field.
 func (r *mutationResolver) OrderServer(ctx context.Context, input OrderServerInput) (*Server, error) {
+	claims, err := auth.GetClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	planUUID, err := uuid.Parse(input.PlanID)
 	if err != nil {
 		return nil, errors.New("invalid plan ID format")
 	}
 
-	newServer, err := r.ServerBus.Create(ctx, input.Name, planUUID)
+	newServer, err := r.ServerBus.Create(ctx, input.Name, planUUID, claims.UserID)
 	if err != nil {
 		if errors.Is(err, plan.ErrPlanNotFound) {
 			return nil, err
@@ -57,6 +72,11 @@ func (r *mutationResolver) OrderServer(ctx context.Context, input OrderServerInp
 
 // ManageServer is the resolver for the manageServer field.
 func (r *mutationResolver) ManageServer(ctx context.Context, serverID string, action ServerAction) (*Server, error) {
+	claims, err := auth.GetClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	serverUUID, err := uuid.Parse(serverID)
 	if err != nil {
 		return nil, errors.New("invalid server ID format")
@@ -66,11 +86,11 @@ func (r *mutationResolver) ManageServer(ctx context.Context, serverID string, ac
 
 	switch action {
 	case ServerActionStart:
-		currentServer, err = r.ServerBus.Start(ctx, serverUUID)
+		currentServer, err = r.ServerBus.Start(ctx, serverUUID, claims.UserID)
 	case ServerActionStop:
-		currentServer, err = r.ServerBus.Stop(ctx, serverUUID)
+		currentServer, err = r.ServerBus.Stop(ctx, serverUUID, claims.UserID)
 	case ServerActionDelete:
-		currentServer, err = r.ServerBus.Delete(ctx, serverUUID)
+		currentServer, err = r.ServerBus.Delete(ctx, serverUUID, claims.UserID)
 	default:
 		return nil, fmt.Errorf("unknown action: %s", action)
 	}
@@ -101,8 +121,13 @@ func (r *queryResolver) Plans(ctx context.Context, pg int, ps int) (*PlanCollect
 
 // Servers is the resolver for the servers field.
 func (r *queryResolver) Servers(ctx context.Context, pg int, ps int) (*ServerCollection, error) {
+	claims, err := auth.GetClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	parsedPage := page.Parse(pg, ps)
-	servers, count, err := r.ServerBus.Search(ctx, parsedPage)
+	servers, count, err := r.ServerBus.Search(ctx, parsedPage, claims.UserID)
 	if err != nil {
 		return nil, errors.New("internal server error")
 	}
@@ -130,12 +155,17 @@ func (r *queryResolver) Plan(ctx context.Context, id string) (*Plan, error) {
 
 // Server is the resolver for the server field.
 func (r *queryResolver) Server(ctx context.Context, id string) (*Server, error) {
+	claims, err := auth.GetClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	serverUUID, err := uuid.Parse(id)
 	if err != nil {
 		return nil, errors.New("invalid server ID format")
 	}
 
-	newServer, err := r.ServerBus.FindByID(ctx, serverUUID)
+	newServer, err := r.ServerBus.FindByID(ctx, serverUUID, claims.UserID)
 	if err != nil {
 		if errors.Is(err, server.ErrServerNotFound) {
 			return nil, err

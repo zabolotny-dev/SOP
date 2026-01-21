@@ -2,6 +2,9 @@ package rest
 
 import (
 	"fmt"
+	"hosting-kit/auth"
+	"hosting-kit/logger"
+	"hosting-kit/mid"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -14,14 +17,28 @@ import (
 )
 
 type Config struct {
-	PlanBus   plan.ExtBusiness
-	ServerBus server.ExtBusiness
-	Prefix    string
+	PlanBus    plan.ExtBusiness
+	ServerBus  server.ExtBusiness
+	Prefix     string
+	AuthClient auth.Client
+	Log        *logger.Logger
 }
 
 func RegisterRoutes(router *chi.Mux, cfg Config) {
 	apiImpl := New(cfg.PlanBus, cfg.ServerBus, cfg.Prefix)
-	strictHandler := gen.NewStrictHandler(apiImpl, nil)
+
+	strictHandler := gen.NewStrictHandlerWithOptions(apiImpl, nil, gen.StrictHTTPServerOptions{
+		ResponseErrorHandlerFunc: makeResponseErrorHandler(cfg.Log),
+		RequestErrorHandlerFunc:  makeRequestErrorHandler(cfg.Log),
+	})
+
+	wrapper := &gen.ServerInterfaceWrapper{
+		Handler:          strictHandler,
+		ErrorHandlerFunc: makeWrapperErrorHandler(cfg.Log),
+	}
+
+	authen := mid.Authenticate(cfg.AuthClient)
+	adminOnly := mid.RequireAdmin()
 
 	router.Route(cfg.Prefix, func(r chi.Router) {
 		specURL := fmt.Sprintf("%s/swagger/doc.yaml", cfg.Prefix)
@@ -34,6 +51,22 @@ func RegisterRoutes(router *chi.Mux, cfg Config) {
 			w.Write(openapi.OpenApiSpec)
 		})
 
-		gen.HandlerFromMux(strictHandler, r)
+		r.Get("/", wrapper.GetRoot)
+		r.Get("/plans", wrapper.ListPlans)
+		r.Get("/plans/{planId}", wrapper.GetPlanById)
+
+		r.Group(func(r chi.Router) {
+			r.Use(authen)
+
+			r.Get("/servers", wrapper.ListServers)
+			r.Post("/servers", wrapper.OrderServer)
+			r.Get("/servers/{serverId}", wrapper.GetServerById)
+			r.Post("/servers/{serverId}/actions", wrapper.PerformServerAction)
+
+			r.Group(func(r chi.Router) {
+				r.Use(adminOnly)
+				r.Post("/plans", wrapper.CreatePlan)
+			})
+		})
 	})
 }

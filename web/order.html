@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order Server - VPS Control</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="navbar">
+      <div class="navbar-left">
+        <div class="navbar-brand">
+          <i class="fas fa-server"></i> VPS Control
+        </div>
+        <div class="navbar-menu" style="display: flex">
+          <a href="/dashboard.html" class="nav-item">Virtual Servers</a>
+          <a href="/order.html" class="nav-item active">Order New</a>
+        </div>
+      </div>
+      <div class="navbar-right">
+        <span
+          id="userEmail"
+          style="margin-right: 15px; opacity: 0.8; font-size: 13px"
+          >Loading...</span
+        >
+        <a href="#" onclick="window.API.logout()" class="nav-item"
+          ><i class="fas fa-sign-out-alt"></i> Logout</a
+        >
+      </div>
+    </div>
+
+    <div class="container">
+      <div id="globalAlert" class="alert"></div>
+
+      <h2 class="page-header">Select a Plan</h2>
+      <div id="plansGrid" class="plans-grid">
+        <div style="text-align: center; width: 100%">
+          <span class="spinner"></span> Loading plans...
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+      const app = {
+        init: async function () {
+          try {
+            const user = await window.API.getCurrentUser();
+            document.getElementById("userEmail").textContent =
+              user.identity.traits.email;
+            await this.loadPlans();
+          } catch (e) {
+            window.location.href = "/login.html";
+          }
+        },
+
+        loadPlans: async function () {
+          try {
+            const data = await window.API.getPlans();
+            const plans = data._embedded ? data._embedded.plans : [];
+            const grid = document.getElementById("plansGrid");
+
+            grid.innerHTML = plans
+              .map(
+                (p) => `
+                        <div class="plan-card">
+                            <div style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">${p.name}</div>
+                            <div class="plan-specs">
+                                <div><i class="fas fa-microchip"></i> ${p.cpuCores} CPU</div>
+                                <div><i class="fas fa-memory"></i> ${p.ramMb} MB RAM</div>
+                                <div><i class="fas fa-hdd"></i> ${p.diskGb} GB SSD</div>
+                            </div>
+                            <button class="btn btn-success btn-block" onclick="app.orderServer('${p.id}', '${p.name}')">
+                                <i class="fas fa-cart-plus"></i> Order Server
+                            </button>
+                        </div>
+                    `,
+              )
+              .join("");
+          } catch (e) {
+            document.getElementById("plansGrid").innerHTML =
+              `<div style="color:red">Error loading plans: ${e.message}</div>`;
+          }
+        },
+
+        orderServer: async function (planId, planName) {
+          const name = prompt(`Hostname for new ${planName}:`, "server");
+          if (!name) return;
+
+          try {
+            await window.API.orderServer(planId, name);
+            window.location.href = "/dashboard.html";
+          } catch (e) {
+            const el = document.getElementById("globalAlert");
+            el.className = `alert alert-error`;
+            el.textContent = e.message;
+            el.style.display = "block";
+          }
+        },
+      };
+
+      document.addEventListener("DOMContentLoaded", () => app.init());
+    </script>
+  </body>
+</html>

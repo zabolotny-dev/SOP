@@ -10,6 +10,7 @@ import (
 type serverDB struct {
 	ID          uuid.UUID `db:"id"`
 	IPv4Address *string   `db:"ipv4_address"`
+	OwnerID     uuid.UUID `db:"owner_id"`
 	PoolID      uuid.UUID `db:"pool_id"`
 	PlanID      uuid.UUID `db:"plan_id"`
 	Name        string    `db:"name"`
@@ -21,6 +22,7 @@ func toDBServer(s server.Server) serverDB {
 	return serverDB{
 		ID:          s.ID,
 		IPv4Address: s.IPv4Address,
+		OwnerID:     s.OwnerID,
 		PoolID:      s.PoolID,
 		PlanID:      s.PlanID,
 		Name:        s.Name,
@@ -33,6 +35,7 @@ func toBusServer(db serverDB) server.Server {
 	return server.Server{
 		ID:          db.ID,
 		IPv4Address: db.IPv4Address,
+		OwnerID:     db.OwnerID,
 		PoolID:      db.PoolID,
 		PlanID:      db.PlanID,
 		Name:        db.Name,

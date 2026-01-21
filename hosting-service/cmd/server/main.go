@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"hosting-contracts/topology"
+	"hosting-kit/auth/kratos"
 	"hosting-kit/database"
 	"hosting-kit/debug"
+	"hosting-kit/grpc"
+	"hosting-kit/logger"
 	"hosting-kit/messaging"
 	"hosting-kit/mid"
 	"hosting-kit/otel"
@@ -16,13 +19,11 @@ import (
 	"hosting-service/internal/plan"
 	"hosting-service/internal/plan/extensions/planotel"
 	"hosting-service/internal/plan/stores/plandb"
-	"hosting-service/internal/platform/grpc"
 	"hosting-service/internal/server"
 	"hosting-service/internal/server/extensions/serverotel"
 	"hosting-service/internal/server/stores/serverdb"
 	"hosting-service/internal/server/stores/servergrpc"
 	"hosting-service/internal/server/stores/servermsg"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,20 +31,22 @@ import (
 	"time"
 
 	"github.com/ardanlabs/conf/v3"
+	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
 	ctx := context.Background()
 
-	if err := run(ctx); err != nil {
-		log.Printf("error: %v\n", err)
+	log := logger.New(os.Stdout, logger.LevelInfo, "hosting-service", otel.GetTraceID)
+
+	if err := run(ctx, log); err != nil {
+		log.Error(ctx, "startup error", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, log *logger.Logger) error {
 
 	// -------------------------------------------------------------------------
 	// Configuration
@@ -58,6 +61,9 @@ func run(ctx context.Context) error {
 			Host         string `conf:"default:localhost:5432"`
 			Name         string `conf:"default:sop"`
 			MaxOpenConns int    `conf:"default:25"`
+		}
+		Auth struct {
+			Host string `conf:"default:http://hosting-kratos:4433"`
 		}
 		Web struct {
 			APIHost      string        `conf:"default:0.0.0.0:8080"`
@@ -113,7 +119,7 @@ func run(ctx context.Context) error {
 	// -------------------------------------------------------------------------
 	// Create GRPC Support
 
-	grpcConn, err := grpc.NewClient(cfg.Resources.Host)
+	grpcConn, err := grpc.NewClient(cfg.Resources.Host, log)
 	if err != nil {
 		return fmt.Errorf("initializing grpc client: %w", err)
 	}
@@ -137,7 +143,7 @@ func run(ctx context.Context) error {
 		defer cancel()
 
 		if err := teardown(cleanupCtx); err != nil {
-			log.Printf("telemetry shutdown error: %v", err)
+			log.Error(cleanupCtx, "telemetry shutdown error", "error", err)
 		}
 	}()
 
@@ -168,7 +174,7 @@ func run(ctx context.Context) error {
 		ctxShut, cancel := context.WithTimeout(ctx, cfg.App.ShutdownTimeout)
 		defer cancel()
 		if err := rqManager.Stop(ctxShut); err != nil {
-			log.Printf("Failed to shutdown rabbit manager: %v", err)
+			log.Error(ctxShut, "failed to shutdown rabbit manager", "error", err)
 		}
 	}()
 
@@ -180,10 +186,16 @@ func run(ctx context.Context) error {
 	planBus := plan.NewBusiness(planStore, planOtelExt)
 
 	serverOtelExt := serverotel.NewExtension()
-	serverPublisher := servermsg.NewPublisher(rqManager)
+	serverProvise := servermsg.NewProvisioner(rqManager)
+	serverNotifier := servermsg.NewNotifier(rqManager)
 	serverStore := serverdb.NewStore(db)
 	serverGrpc := servergrpc.NewGrpc(grpcConn, cfg.Resources.Timeout)
-	serverBus := server.NewBusiness(serverStore, planBus, serverPublisher, serverGrpc, serverOtelExt)
+	serverBus := server.NewBusiness(serverStore, planBus, serverProvise, serverGrpc, serverNotifier, serverOtelExt)
+
+	// -------------------------------------------------------------------------
+	// Initialize authentication support
+
+	authClient := kratos.New(cfg.Auth.Host)
 
 	// -------------------------------------------------------------------------
 	// Start API Service
@@ -192,23 +204,28 @@ func run(ctx context.Context) error {
 
 	mux.Use(mid.Otel(tracer))
 	mux.Use(middleware.Recoverer)
-	mux.Use(mid.Logger)
-	mux.Use(mid.Performance)
+	mux.Use(mid.Logger(log))
+	mux.Use(mid.Performance(log))
 
 	rest.RegisterRoutes(mux, rest.Config{
-		PlanBus:   planBus,
-		ServerBus: serverBus,
-		Prefix:    cfg.Web.APIPrefix,
+		PlanBus:    planBus,
+		ServerBus:  serverBus,
+		Prefix:     cfg.Web.APIPrefix,
+		AuthClient: authClient,
+		Log:        log,
 	})
 
 	graphql.RegisterRoutes(mux, graphql.HandlerConfig{
-		PlanBus:   planBus,
-		ServerBus: serverBus,
+		PlanBus:    planBus,
+		ServerBus:  serverBus,
+		Prefix:     cfg.Web.APIPrefix,
+		AuthClient: authClient,
 	})
 
 	err = queue.RegisterAll(rqManager, queue.Config{
 		ServerBus: serverBus,
 		QueueName: cfg.AMQP.QueueName,
+		Log:       log,
 	})
 	if err != nil {
 		return fmt.Errorf("registering queue handlers: %w", err)
@@ -225,7 +242,7 @@ func run(ctx context.Context) error {
 	serverErrors := make(chan error, 2)
 
 	go func() {
-		log.Printf("main: HTTP API listening on %s", api.Addr)
+		log.Info(ctx, "HTTP API listening", "addr", api.Addr)
 		serverErrors <- api.ListenAndServe()
 	}()
 
@@ -233,7 +250,7 @@ func run(ctx context.Context) error {
 	// Start Debug Service
 
 	go func() {
-		log.Printf("main: Debug server listening on %s", cfg.Web.DebugHost)
+		log.Info(ctx, "HTTP Debug listening", "addr", cfg.Web.DebugHost)
 		serverErrors <- http.ListenAndServe(cfg.Web.DebugHost, debug.Mux())
 	}()
 
@@ -247,7 +264,7 @@ func run(ctx context.Context) error {
 	case err := <-serverErrors:
 		return fmt.Errorf("server error: %w", err)
 	case sig := <-shutdown:
-		log.Printf("main: %v : Start shutdown", sig)
+		log.Info(ctx, "start shutdown", "signal", sig.String())
 		ctxShut, cancel := context.WithTimeout(context.Background(), cfg.App.ShutdownTimeout)
 		defer cancel()
 

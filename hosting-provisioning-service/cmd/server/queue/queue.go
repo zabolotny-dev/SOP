@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"hosting-kit/logger"
 	"hosting-kit/messaging"
 	"hosting-provisioning-service/cmd/server/queue/handlers/provisegrp"
 	"hosting-provisioning-service/internal/provisioning"
@@ -9,6 +10,7 @@ import (
 type Config struct {
 	ProvBus   provisioning.ExtBusiness
 	QueueName string
+	Log       *logger.Logger
 }
 
 func RegisterAll(manager *messaging.MessageManager, cfg Config) error {
@@ -17,6 +19,7 @@ func RegisterAll(manager *messaging.MessageManager, cfg Config) error {
 		provisegrp.Config{
 			ProvBus:   cfg.ProvBus,
 			QueueName: cfg.QueueName,
+			Log:       cfg.Log,
 		},
 	)
 	if err != nil {

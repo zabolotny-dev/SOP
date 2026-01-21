@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard - VPS Control</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="navbar">
+      <div class="navbar-left">
+        <div class="navbar-brand">
+          <i class="fas fa-server"></i> VPS Control
+        </div>
+        <div class="navbar-menu" style="display: flex">
+          <a href="/dashboard.html" class="nav-item active">Virtual Servers</a>
+          <a href="/order.html" class="nav-item">Order New</a>
+        </div>
+      </div>
+      <div class="navbar-right">
+        <span
+          id="userEmail"
+          style="margin-right: 15px; opacity: 0.8; font-size: 13px"
+          >Loading...</span
+        >
+        <a href="#" onclick="window.API.logout()" class="nav-item"
+          ><i class="fas fa-sign-out-alt"></i> Logout</a
+        >
+      </div>
+    </div>
+
+    <div class="container">
+      <h2 class="page-header">Virtual Servers</h2>
+
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width: 80px">Status</th>
+                <th>Hostname</th>
+                <th>IP Address</th>
+                <th>Plan</th>
+                <th>Created</th>
+                <th style="width: 100px"></th>
+              </tr>
+            </thead>
+            <tbody id="serverTableBody">
+              <tr>
+                <td colspan="6" style="text-align: center; padding: 20px">
+                  Loading servers...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+      const app = {
+        plansMap: {},
+
+        init: async function () {
+          try {
+            const user = await window.API.getCurrentUser();
+            document.getElementById("userEmail").textContent =
+              user.identity.traits.email;
+
+            window.API.connectWebSocket();
+            window.API.addWebSocketListener(this.handleWsMessage.bind(this));
+
+            await this.loadPlans();
+            await this.loadServers();
+          } catch (e) {
+            window.location.href = "/login.html";
+          }
+        },
+
+        formatDate: function (dateString) {
+          if (!dateString) return "-";
+          return new Date(dateString).toLocaleString();
+        },
+
+        loadPlans: async function () {
+          try {
+            const data = await window.API.getPlans();
+            const plans = data._embedded ? data._embedded.plans : [];
+            plans.forEach((p) => (this.plansMap[p.id] = p));
+          } catch (e) {
+            console.error("Failed to load plans map");
+          }
+        },
+
+        loadServers: async function () {
+          const tbody = document.getElementById("serverTableBody");
+          try {
+            const data = await window.API.getServers();
+            const servers = data._embedded ? data._embedded.servers : [];
+
+            if (servers.length === 0) {
+              tbody.innerHTML =
+                '<tr><td colspan="6" style="text-align:center; padding: 20px;">No servers found.</td></tr>';
+              return;
+            }
+
+            tbody.innerHTML = servers
+              .map((s) => {
+                const planName = this.plansMap[s.planId]
+                  ? this.plansMap[s.planId].name
+                  : "Unknown";
+                const statusClass =
+                  s.status === "RUNNING"
+                    ? "badge-running"
+                    : s.status === "STOPPED"
+                      ? "badge-stopped"
+                      : "badge-pending";
+
+                return `
+                        <tr id="row-${s.id}">
+                            <td><span class="badge ${statusClass}" id="badge-${s.id}">${s.status}</span></td>
+                            <td><strong>${s.name}</strong></td>
+                            <td id="ip-${s.id}">${s.IPv4Address || '<span style="color:#999">...</span>'}</td>
+                            <td>${planName}</td>
+                            <td style="font-size: 13px; color: #666;">${this.formatDate(s.createdAt)}</td>
+                            <td style="text-align: right;">
+                                <a href="/server.html?id=${s.id}" class="btn btn-dark btn-sm">Manage</a>
+                            </td>
+                        </tr>`;
+              })
+              .join("");
+          } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="6" style="color:red; text-align:center;">Error: ${e.message}</td></tr>`;
+          }
+        },
+
+        handleWsMessage: function (msg) {
+          if (msg.Type === "server.updated" && msg.Payload) {
+            const p = msg.Payload;
+            const badge = document.getElementById(`badge-${p.serverId}`);
+            if (badge) {
+              badge.innerText = p.status;
+              badge.className = `badge badge-${p.status === "RUNNING" ? "running" : p.status === "STOPPED" ? "stopped" : "pending"}`;
+
+              const row = document.getElementById(`row-${p.serverId}`);
+              if (row) {
+                row.style.backgroundColor = "#e6f3ff";
+                setTimeout(() => (row.style.backgroundColor = "white"), 500);
+              }
+            }
+            if (p.ip) {
+              const ipCell = document.getElementById(`ip-${p.serverId}`);
+              if (ipCell) ipCell.innerText = p.ip;
+            }
+          }
+        },
+      };
+
+      document.addEventListener("DOMContentLoaded", () => app.init());
+    </script>
+  </body>
+</html>

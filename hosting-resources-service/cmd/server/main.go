@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hosting-kit/auth/kratos"
 	"hosting-kit/database"
 	"hosting-kit/debug"
+	"hosting-kit/logger"
 	"hosting-kit/mid"
 	"hosting-kit/otel"
 	"hosting-resources-service/cmd/server/grpc"
@@ -13,7 +15,6 @@ import (
 	"hosting-resources-service/internal/pool"
 	"hosting-resources-service/internal/pool/extensions/poolotel"
 	"hosting-resources-service/internal/pool/stores/pooldb"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -22,20 +23,22 @@ import (
 	"time"
 
 	"github.com/ardanlabs/conf/v3"
+	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
 	ctx := context.Background()
 
-	if err := run(ctx); err != nil {
-		log.Printf("error: %v\n", err)
+	log := logger.New(os.Stdout, logger.LevelInfo, "resources-service", otel.GetTraceID)
+
+	if err := run(ctx, log); err != nil {
+		log.Error(ctx, "startup error", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, log *logger.Logger) error {
 
 	// -------------------------------------------------------------------------
 	// Configuration
@@ -50,6 +53,9 @@ func run(ctx context.Context) error {
 			Host         string `conf:"default:localhost:5432"`
 			Name         string `conf:"default:sop_pool"`
 			MaxOpenConns int    `conf:"default:25"`
+		}
+		Auth struct {
+			Host string `conf:"default:http://hosting-kratos:4433"`
 		}
 		Web struct {
 			APIHost      string        `conf:"default:0.0.0.0:2080"`
@@ -111,7 +117,7 @@ func run(ctx context.Context) error {
 		defer cancel()
 
 		if err := teardown(cleanupCtx); err != nil {
-			log.Printf("telemetry shutdown error: %v", err)
+			log.Error(cleanupCtx, "telemetry shutdown error", "error", err)
 		}
 	}()
 
@@ -125,18 +131,25 @@ func run(ctx context.Context) error {
 	poolBus := pool.NewBusiness(poolStore, poolOtelExt)
 
 	// -------------------------------------------------------------------------
+	// Initialize authentication support
+
+	authClient := kratos.New(cfg.Auth.Host)
+
+	// -------------------------------------------------------------------------
 	// Start API Service
 
 	mux := chi.NewRouter()
 
-	mux.Use(mid.Otel(tracer))
 	mux.Use(middleware.Recoverer)
-	mux.Use(mid.Logger)
-	mux.Use(mid.Performance)
+	mux.Use(mid.Otel(tracer))
+	mux.Use(mid.Logger(log))
+	mux.Use(mid.Performance(log))
 
 	rest.RegisterRoutes(mux, rest.Config{
-		PoolBus: poolBus,
-		Prefix:  cfg.Web.APIPrefix,
+		PoolBus:    poolBus,
+		Prefix:     cfg.Web.APIPrefix,
+		AuthClient: authClient,
+		Log:        log,
 	})
 
 	api := http.Server{
@@ -150,7 +163,7 @@ func run(ctx context.Context) error {
 	serverErrors := make(chan error, 3)
 
 	go func() {
-		log.Printf("main: HTTP API listening on %s", api.Addr)
+		log.Info(ctx, "HTTP API listening", "addr", api.Addr)
 		serverErrors <- api.ListenAndServe()
 	}()
 
@@ -165,10 +178,11 @@ func run(ctx context.Context) error {
 	grpcApp := grpc.New(grpc.Config{
 		PoolBus: poolBus,
 		Tracer:  tracer,
+		Log:     log,
 	})
 
 	go func() {
-		log.Printf("main: gRPC API listening on %s", cfg.Web.GRPCHost)
+		log.Info(ctx, "GRPC API listening", "addr", cfg.Web.GRPCHost)
 		serverErrors <- grpcApp.Serve(lis)
 	}()
 
@@ -178,7 +192,7 @@ func run(ctx context.Context) error {
 	// Start Debug Service
 
 	go func() {
-		log.Printf("main: Debug server listening on %s", cfg.Web.DebugHost)
+		log.Info(ctx, "HTTP Debug listening", "addr", cfg.Web.DebugHost)
 		serverErrors <- http.ListenAndServe(cfg.Web.DebugHost, debug.Mux())
 	}()
 
@@ -192,7 +206,7 @@ func run(ctx context.Context) error {
 	case err := <-serverErrors:
 		return fmt.Errorf("server error: %w", err)
 	case sig := <-shutdown:
-		log.Printf("main: %v : Start shutdown", sig)
+		log.Info(ctx, "start shutdown", "signal", sig.String())
 		ctxShut, cancel := context.WithTimeout(context.Background(), cfg.App.ShutdownTimeout)
 		defer cancel()
 

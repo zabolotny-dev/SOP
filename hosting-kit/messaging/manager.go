@@ -95,7 +95,7 @@ func (m *MessageManager) Subscribe(queueName, routingKey, exchangeName string, h
 
 		ctx = ExtractTraceHeaders(ctx, d.Headers)
 
-		ctx, span := m.tracer.Start(ctx, "rabbitmq.consume")
+		ctx, span := m.tracer.Start(ctx, "rabbitmq.consume", trace.WithSpanKind(trace.SpanKindConsumer))
 		defer span.End()
 
 		ctx = otel.InjectTracing(ctx, m.tracer)
@@ -147,14 +147,27 @@ func (m *MessageManager) Subscribe(queueName, routingKey, exchangeName string, h
 }
 
 func (m *MessageManager) Publish(ctx context.Context, exchangeName, routingKey string, data interface{}) error {
+	ctx, span := m.tracer.Start(ctx, "rabbitmq.publish", trace.WithSpanKind(trace.SpanKindProducer))
+	defer span.End()
+
 	eventBytes, err := json.Marshal(data)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
+	span.SetAttributes(
+		attribute.String("messaging.system", "rabbitmq"),
+		attribute.String("messaging.operation", "publish"),
+		attribute.String("messaging.destination", exchangeName),
+		attribute.String("messaging.routing_key", routingKey),
+		attribute.Int("messaging.message.payload_size_bytes", len(eventBytes)),
+	)
+
 	headers := InjectTraceHeaders(ctx)
 
-	return m.publisher.Publish(
+	err = m.publisher.Publish(
 		eventBytes,
 		[]string{routingKey},
 		rabbitmq.WithPublishOptionsContentType("application/json"),
@@ -162,6 +175,15 @@ func (m *MessageManager) Publish(ctx context.Context, exchangeName, routingKey s
 		rabbitmq.WithPublishOptionsPersistentDelivery,
 		rabbitmq.WithPublishOptionsHeaders(headers),
 	)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 func (m *MessageManager) Stop(ctx context.Context) error {

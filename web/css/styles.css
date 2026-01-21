@@ -1,0 +1,459 @@
+:root {
+  --primary: #0088cc;
+  --bg-color: #f2f4f6;
+  --panel-bg: #ffffff;
+  --border-color: #e5e9ec;
+  --text-main: #333;
+  --text-muted: #888;
+
+  --success: #8dc63f;
+  --danger: #d9534f;
+  --warning: #f0ad4e;
+  --dark-btn: #444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  background-color: var(--bg-color);
+  margin: 0;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+/* Navbar */
+.navbar {
+  background-color: var(--primary);
+  color: white;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-left,
+.navbar-right {
+  display: flex;
+  align-items: center;
+}
+.navbar-brand {
+  font-size: 18px;
+  font-weight: 600;
+  margin-right: 30px;
+}
+
+.nav-item {
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  margin-right: 20px;
+  font-weight: 500;
+  padding: 15px 0;
+  border-bottom: 3px solid transparent;
+  transition: 0.2s;
+  cursor: pointer;
+}
+.nav-item:hover,
+.nav-item.active {
+  color: white;
+  border-bottom-color: white;
+}
+.nav-item i {
+  margin-right: 5px;
+}
+
+/* Layout */
+.container {
+  max-width: 1100px;
+  margin: 30px auto;
+  padding: 0 15px;
+}
+.page-header {
+  font-size: 22px;
+  font-weight: 400;
+  color: #444;
+  margin-bottom: 20px;
+}
+.hidden {
+  display: none !important;
+}
+
+/* Cards */
+.card {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  margin-bottom: 20px;
+}
+.card-header {
+  background-color: #f9f9f9;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  color: #555;
+}
+.card-body {
+  padding: 20px;
+}
+
+/* Tables */
+.table-responsive {
+  overflow-x: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th {
+  text-align: left;
+  padding: 12px 15px;
+  background: #fbfbfb;
+  border-bottom: 2px solid var(--border-color);
+  color: #666;
+  font-size: 13px;
+}
+.table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+.table tr:hover td {
+  background-color: #f9fcff;
+}
+
+/* Badges */
+.badge {
+  padding: 4px 8px;
+  border-radius: 3px;
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+.badge-running {
+  background-color: var(--success);
+}
+.badge-stopped {
+  background-color: var(--danger);
+}
+.badge-pending {
+  background-color: var(--warning);
+}
+.badge-unknown {
+  background-color: #999;
+}
+
+/* Buttons */
+.btn {
+  border: none;
+  padding: 8px 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.2s;
+}
+.btn-success {
+  background: var(--success);
+  color: white;
+}
+.btn-success:hover {
+  background: #7ab433;
+}
+.btn-dark {
+  background: var(--dark-btn);
+  color: white;
+}
+.btn-dark:hover {
+  background: #333;
+}
+.btn-outline {
+  background: white;
+  border: 1px solid #ccc;
+  color: #555;
+}
+.btn-outline:hover {
+  background: #eee;
+}
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.btn-block {
+  width: 100%;
+}
+
+/* Grid for Plans */
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+.plan-card {
+  background: white;
+  border: 1px solid var(--border-color);
+  padding: 25px;
+  text-align: center;
+  border-radius: 4px;
+  transition: 0.2s;
+}
+.plan-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+  border-color: var(--primary);
+}
+.plan-specs {
+  text-align: left;
+  background: #f9f9f9;
+  padding: 15px;
+  margin: 15px 0;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #555;
+}
+.plan-specs div {
+  margin-bottom: 6px;
+}
+
+/* Single Server View */
+.server-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 10px;
+}
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+.info-row:last-child {
+  border-bottom: none;
+}
+.info-row label {
+  font-weight: 600;
+  color: #555;
+}
+
+/* Control Buttons (Big) */
+.control-buttons {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.control-btn {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  width: 100px;
+  height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: 0.2s;
+  color: #555;
+}
+.control-btn:hover {
+  border-color: var(--primary);
+  background: #fbfbfb;
+  transform: translateY(-2px);
+}
+.control-btn i {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+/* --- AUTH PAGES --- */
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--primary); /* Синий фон на всю страницу */
+  background: linear-gradient(
+    135deg,
+    var(--primary) 0%,
+    #005580 100%
+  ); /* Небольшой градиент для красоты */
+  padding: 20px;
+}
+
+.auth-box {
+  background-color: #ffffff; /* Явный белый фон */
+  width: 100%;
+  max-width: 400px;
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2); /* Тень чтобы карточка "парила" */
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.auth-header h1 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.auth-header p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #444;
+  font-size: 14px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 15px;
+  transition: all 0.2s;
+  background-color: #fcfcfc;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background-color: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 136, 204, 0.1);
+}
+
+.form-group small {
+  display: block;
+  margin-top: 6px;
+  color: #888;
+  font-size: 12px;
+}
+
+/* Кнопка входа на всю ширину */
+.btn-block {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  background-color: var(--primary); /* Синяя кнопка */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-block:hover {
+  background-color: #006699;
+}
+
+.btn-block:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.auth-links {
+  text-align: center;
+  margin-top: 25px;
+  font-size: 14px;
+  color: #666;
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+
+.auth-links a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.auth-links a:hover {
+  text-decoration: underline;
+}
+
+/* Спиннер загрузки */
+.spinner {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Alerts */
+.alert {
+  padding: 12px 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  display: none;
+  font-size: 13px;
+}
+.alert-success {
+  background: #dff0d8;
+  color: #3c763d;
+  border: 1px solid #d6e9c6;
+}
+.alert-error {
+  background: #f2dede;
+  color: #a94442;
+  border: 1px solid #ebccd1;
+}
+
+.spinner {
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

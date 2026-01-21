@@ -1,24 +1,30 @@
 package mid
 
 import (
-	"hosting-kit/otel"
-	"log"
+	"hosting-kit/logger"
 	"net/http"
 	"time"
 )
 
 const limitMs = 20
 
-func Performance(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		startTime := time.Now()
+func Performance(log *logger.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			startTime := time.Now()
 
-		next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r)
 
-		duration := time.Since(startTime)
+			duration := time.Since(startTime)
 
-		if duration.Milliseconds() > limitMs {
-			log.Printf("Slow request detected: [%s] %s %s %dms", otel.GetTraceID(r.Context()), r.Method, r.RequestURI, duration.Milliseconds())
-		}
-	})
+			if duration.Milliseconds() > limitMs {
+				log.Warn(r.Context(), "slow request detected",
+					"method", r.Method,
+					"uri", r.RequestURI,
+					"duration_ms", duration.Milliseconds(),
+					"limit_ms", limitMs,
+				)
+			}
+		})
+	}
 }

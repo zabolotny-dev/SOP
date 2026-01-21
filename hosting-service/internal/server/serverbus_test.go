@@ -13,6 +13,16 @@ import (
 	"github.com/google/uuid"
 )
 
+type mockNotifier struct {
+	ServerUpdatedFunc func(ctx context.Context, s server.Server)
+}
+
+func (m *mockNotifier) ServerUpdated(ctx context.Context, s server.Server) {
+	if m.ServerUpdatedFunc != nil {
+		m.ServerUpdatedFunc(ctx, s)
+	}
+}
+
 type mockResourcesManager struct {
 	ConsumeFunc func(ctx context.Context, r server.Resources) (uuid.UUID, error)
 	ReturnFunc  func(ctx context.Context, r server.Resources, poolID uuid.UUID) error
@@ -48,7 +58,7 @@ type mockStorer struct {
 	CreateFunc   func(ctx context.Context, s server.Server) error
 	UpdateFunc   func(ctx context.Context, s server.Server) error
 	DeleteFunc   func(ctx context.Context, ID uuid.UUID) error
-	FindAllFunc  func(ctx context.Context, pg page.Page) ([]server.Server, int, error)
+	FindAllFunc  func(ctx context.Context, pg page.Page, userID uuid.UUID) ([]server.Server, int, error)
 }
 
 func (m *mockStorer) FindByID(ctx context.Context, ID uuid.UUID) (server.Server, error) {
@@ -75,9 +85,10 @@ func (m *mockStorer) Delete(ctx context.Context, ID uuid.UUID) error {
 	}
 	return nil
 }
-func (m *mockStorer) FindAll(ctx context.Context, pg page.Page) ([]server.Server, int, error) {
+
+func (m *mockStorer) FindAll(ctx context.Context, pg page.Page, userID uuid.UUID) ([]server.Server, int, error) {
 	if m.FindAllFunc != nil {
-		return m.FindAllFunc(ctx, pg)
+		return m.FindAllFunc(ctx, pg, userID)
 	}
 	return nil, 0, nil
 }
@@ -96,6 +107,7 @@ func (m *mockProvisioner) RequestIP(ctx context.Context, s server.Server) error 
 func Test_Create(t *testing.T) {
 	ctx := context.Background()
 	planID := uuid.New()
+	userID := uuid.New()
 	errBoom := errors.New("boom")
 
 	type testCase struct {
@@ -128,6 +140,9 @@ func Test_Create(t *testing.T) {
 					CreateFunc: func(ctx context.Context, s server.Server) error {
 						if s.Status != server.StatusPending {
 							return fmt.Errorf("expected status PENDING, got %s", s.Status)
+						}
+						if s.OwnerID != userID {
+							return fmt.Errorf("expected OwnerID %s, got %s", userID, s.OwnerID)
 						}
 						return nil
 					},
@@ -195,9 +210,9 @@ func Test_Create(t *testing.T) {
 
 	for _, tt := range table {
 		t.Run(tt.name, func(t *testing.T) {
-			bus := server.NewBusiness(tt.st(), tt.pf(), tt.prov(), tt.rm())
+			bus := server.NewBusiness(tt.st(), tt.pf(), tt.prov(), tt.rm(), &mockNotifier{})
 
-			got, err := bus.Create(ctx, tt.serverName, tt.planID)
+			got, err := bus.Create(ctx, tt.serverName, tt.planID, userID)
 
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
@@ -215,9 +230,11 @@ func Test_Create(t *testing.T) {
 		})
 	}
 }
+
 func Test_Start(t *testing.T) {
 	ctx := context.Background()
 	srvID := uuid.New()
+	userID := uuid.New()
 
 	type testCase struct {
 		name       string
@@ -233,7 +250,7 @@ func Test_Start(t *testing.T) {
 			st: func() *mockStorer {
 				return &mockStorer{
 					FindByIDFunc: func(ctx context.Context, ID uuid.UUID) (server.Server, error) {
-						return server.Server{ID: ID, Status: server.StatusStopped}, nil
+						return server.Server{ID: ID, Status: server.StatusStopped, OwnerID: userID}, nil
 					},
 					UpdateFunc: func(ctx context.Context, s server.Server) error {
 						if s.Status != server.StatusRunning {
@@ -251,7 +268,7 @@ func Test_Start(t *testing.T) {
 			st: func() *mockStorer {
 				return &mockStorer{
 					FindByIDFunc: func(ctx context.Context, ID uuid.UUID) (server.Server, error) {
-						return server.Server{ID: ID, Status: server.StatusPending}, nil
+						return server.Server{ID: ID, Status: server.StatusPending, OwnerID: userID}, nil
 					},
 				}
 			},
@@ -269,13 +286,25 @@ func Test_Start(t *testing.T) {
 			},
 			wantErr: server.ErrServerNotFound,
 		},
+		{
+			name:       "fail_access_denied",
+			initStatus: server.StatusStopped,
+			st: func() *mockStorer {
+				return &mockStorer{
+					FindByIDFunc: func(ctx context.Context, ID uuid.UUID) (server.Server, error) {
+						return server.Server{ID: ID, Status: server.StatusStopped, OwnerID: uuid.New()}, nil
+					},
+				}
+			},
+			wantErr: server.ErrAccessDenied,
+		},
 	}
 
 	for _, tt := range table {
 		t.Run(tt.name, func(t *testing.T) {
-			bus := server.NewBusiness(tt.st(), nil, nil, nil)
+			bus := server.NewBusiness(tt.st(), nil, nil, nil, &mockNotifier{})
 
-			_, err := bus.Start(ctx, srvID)
+			_, err := bus.Start(ctx, srvID, userID)
 
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
@@ -352,7 +381,7 @@ func Test_SetIPAddress(t *testing.T) {
 
 	for _, tt := range table {
 		t.Run(tt.name, func(t *testing.T) {
-			bus := server.NewBusiness(tt.setupStorer(), nil, nil, nil)
+			bus := server.NewBusiness(tt.setupStorer(), nil, nil, nil, &mockNotifier{})
 			err := bus.SetIPAddress(ctx, srvID, tt.ip)
 
 			if tt.wantErr != nil {
@@ -371,7 +400,8 @@ func Test_SetIPAddress(t *testing.T) {
 func Test_Delete(t *testing.T) {
 	ctx := context.Background()
 	srvID := uuid.New()
-	planID := uuid.New() // Нам нужен planID для мока
+	planID := uuid.New()
+	userID := uuid.New()
 
 	type testCase struct {
 		name    string
@@ -401,7 +431,7 @@ func Test_Delete(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			st := &mockStorer{
 				FindByIDFunc: func(ctx context.Context, ID uuid.UUID) (server.Server, error) {
-					return server.Server{ID: ID, Status: tt.status, PlanID: planID}, nil
+					return server.Server{ID: ID, Status: tt.status, PlanID: planID, OwnerID: userID}, nil
 				},
 				DeleteFunc: func(ctx context.Context, ID uuid.UUID) error { return nil },
 			}
@@ -418,9 +448,9 @@ func Test_Delete(t *testing.T) {
 				},
 			}
 
-			bus := server.NewBusiness(st, pf, nil, rm)
+			bus := server.NewBusiness(st, pf, nil, rm, &mockNotifier{})
 
-			_, err := bus.Delete(ctx, srvID)
+			_, err := bus.Delete(ctx, srvID, userID)
 
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {

@@ -3,22 +3,40 @@ package rest
 import (
 	"fmt"
 	"hosting-contracts/resources-service/openapi"
+	"hosting-kit/auth"
+	"hosting-kit/logger"
+	"hosting-kit/mid"
 	"hosting-resources-service/cmd/server/rest/gen"
 	"hosting-resources-service/internal/pool"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Config struct {
-	PoolBus pool.ExtBusiness
-	Prefix  string
+	PoolBus    pool.ExtBusiness
+	Tracer     trace.Tracer
+	AuthClient auth.Client
+	Prefix     string
+	Log        *logger.Logger
 }
 
 func RegisterRoutes(router *chi.Mux, cfg Config) {
 	apiImpl := New(cfg.PoolBus, cfg.Prefix)
-	strictHandler := gen.NewStrictHandler(apiImpl, nil)
+	strictHandler := gen.NewStrictHandlerWithOptions(apiImpl, nil, gen.StrictHTTPServerOptions{
+		ResponseErrorHandlerFunc: makeResponseErrorHandler(cfg.Log),
+		RequestErrorHandlerFunc:  makeRequestErrorHandler(cfg.Log),
+	})
+
+	wrapper := &gen.ServerInterfaceWrapper{
+		Handler:          strictHandler,
+		ErrorHandlerFunc: makeWrapperErrorHandler(cfg.Log),
+	}
+
+	authen := mid.Authenticate(cfg.AuthClient)
+	adminOnly := mid.RequireAdmin()
 
 	router.Route(cfg.Prefix, func(r chi.Router) {
 		specURL := fmt.Sprintf("%s/swagger/doc.yaml", cfg.Prefix)
@@ -31,6 +49,15 @@ func RegisterRoutes(router *chi.Mux, cfg Config) {
 			w.Write(openapi.OpenApiSpec)
 		})
 
-		gen.HandlerFromMux(strictHandler, r)
+		r.Get("/", wrapper.GetRoot)
+
+		r.Group(func(r chi.Router) {
+			r.Use(authen, adminOnly)
+
+			r.Get("/pools", wrapper.ListPools)
+			r.Post("/pools", wrapper.CreatePool)
+			r.Post("/pools/{poolId}/resources", wrapper.AddResources)
+		})
+
 	})
 }

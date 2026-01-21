@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"hosting-kit/database"
+	"hosting-kit/logger"
+	"hosting-kit/otel"
 	"hosting-service/cmd/migrator/commands"
-	"log"
 	"os"
 	"time"
 
@@ -13,8 +15,11 @@ import (
 )
 
 func main() {
+	ctx := context.Context(context.Background())
+
+	log := logger.New(os.Stdout, logger.LevelInfo, "hosting-service-migrator", otel.GetTraceID)
 	if err := run(); err != nil {
-		log.Printf("error: %v\n", err)
+		log.Error(ctx, "startup error", "err", err)
 		os.Exit(1)
 	}
 }

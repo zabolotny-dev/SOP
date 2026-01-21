@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome - VPS Control</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+    <style>
+      .hero-content {
+        text-align: center;
+        color: white;
+        max-width: 600px;
+        animation: fadeIn 0.8s ease-out;
+      }
+
+      .hero-icon {
+        font-size: 64px;
+        margin-bottom: 20px;
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      .hero-title {
+        font-size: 48px;
+        font-weight: 700;
+        margin-bottom: 15px;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .hero-subtitle {
+        font-size: 20px;
+        opacity: 0.9;
+        margin-bottom: 40px;
+        line-height: 1.5;
+      }
+
+      .hero-buttons {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .btn-hero-primary {
+        background: white;
+        color: var(--primary);
+        padding: 14px 32px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 16px;
+        transition: all 0.2s;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      }
+      .btn-hero-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+      }
+
+      .btn-hero-outline {
+        background: transparent;
+        color: white;
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        padding: 12px 30px;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 16px;
+        transition: all 0.2s;
+      }
+      .btn-hero-outline:hover {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: white;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="auth-container">
+      <div class="hero-content">
+        <div class="hero-icon">
+          <i class="fas fa-cloud-upload-alt"></i>
+        </div>
+        <h1 class="hero-title">VPS Control</h1>
+        <p class="hero-subtitle">
+          Manage your virtual infrastructure with ease. <br />
+          Reliable, fast, and simple cloud hosting.
+        </p>
+
+        <div class="hero-buttons">
+          <a href="/login.html" class="btn-hero-outline">Sign In</a>
+          <a href="/register.html" class="btn-hero-primary">Create Account</a>
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+      window.API.getCurrentUser()
+        .then(() => {
+          window.location.href = "/dashboard.html";
+        })
+        .catch(() => {});
+    </script>
+  </body>
+</html>

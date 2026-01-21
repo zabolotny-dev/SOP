@@ -21,32 +21,32 @@ func NewExtension() server.Extension {
 	}
 }
 
-func (e *Extension) Create(ctx context.Context, name string, planID uuid.UUID) (server.Server, error) {
+func (e *Extension) Create(ctx context.Context, name string, planID uuid.UUID, userID uuid.UUID) (server.Server, error) {
 	ctx, span := otel.AddSpan(ctx, "server.create")
 	defer span.End()
 
-	return e.bus.Create(ctx, name, planID)
+	return e.bus.Create(ctx, name, planID, userID)
 }
 
-func (e *Extension) Delete(ctx context.Context, serverID uuid.UUID) (server.Server, error) {
+func (e *Extension) Delete(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (server.Server, error) {
 	ctx, span := otel.AddSpan(ctx, "server.delete")
 	defer span.End()
 
-	return e.bus.Delete(ctx, serverID)
+	return e.bus.Delete(ctx, serverID, userID)
 }
 
-func (e *Extension) FindByID(ctx context.Context, ID uuid.UUID) (server.Server, error) {
+func (e *Extension) FindByID(ctx context.Context, ID uuid.UUID, userID uuid.UUID) (server.Server, error) {
 	ctx, span := otel.AddSpan(ctx, "server.findbyid")
 	defer span.End()
 
-	return e.bus.FindByID(ctx, ID)
+	return e.bus.FindByID(ctx, ID, userID)
 }
 
-func (e *Extension) Search(ctx context.Context, pg page.Page) ([]server.Server, int, error) {
+func (e *Extension) Search(ctx context.Context, pg page.Page, userID uuid.UUID) ([]server.Server, int, error) {
 	ctx, span := otel.AddSpan(ctx, "server.search")
 	defer span.End()
 
-	return e.bus.Search(ctx, pg)
+	return e.bus.Search(ctx, pg, userID)
 }
 
 func (e *Extension) SetIPAddress(ctx context.Context, serverID uuid.UUID, ip string) error {
@@ -63,16 +63,16 @@ func (e *Extension) SetProvisioningFailed(ctx context.Context, serverID uuid.UUI
 	return e.bus.SetProvisioningFailed(ctx, serverID)
 }
 
-func (e *Extension) Start(ctx context.Context, serverID uuid.UUID) (server.Server, error) {
+func (e *Extension) Start(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (server.Server, error) {
 	ctx, span := otel.AddSpan(ctx, "server.start")
 	defer span.End()
 
-	return e.bus.Start(ctx, serverID)
+	return e.bus.Start(ctx, serverID, userID)
 }
 
-func (e *Extension) Stop(ctx context.Context, serverID uuid.UUID) (server.Server, error) {
+func (e *Extension) Stop(ctx context.Context, serverID uuid.UUID, userID uuid.UUID) (server.Server, error) {
 	ctx, span := otel.AddSpan(ctx, "server.stop")
 	defer span.End()
 
-	return e.bus.Stop(ctx, serverID)
+	return e.bus.Stop(ctx, serverID, userID)
 }

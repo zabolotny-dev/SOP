@@ -17,3 +17,8 @@ scrape_configs:
     static_configs:
       - targets: ["hosting-resources-service:2010"]
     metrics_path: "/metrics"
+
+  - job_name: "notification-service"
+    static_configs:
+      - targets: ["hosting-notification-service:1010"]
+    metrics_path: "/metrics"

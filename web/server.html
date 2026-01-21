@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manage Server - VPS Control</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="navbar">
+      <div class="navbar-left">
+        <div class="navbar-brand">
+          <i class="fas fa-server"></i> VPS Control
+        </div>
+        <div class="navbar-menu" style="display: flex">
+          <a href="/dashboard.html" class="nav-item">Virtual Servers</a>
+          <a href="/order.html" class="nav-item">Order New</a>
+        </div>
+      </div>
+      <div class="navbar-right">
+        <span
+          id="userEmail"
+          style="margin-right: 15px; opacity: 0.8; font-size: 13px"
+          >Loading...</span
+        >
+        <a href="#" onclick="window.API.logout()" class="nav-item"
+          ><i class="fas fa-sign-out-alt"></i> Logout</a
+        >
+      </div>
+    </div>
+
+    <div class="container">
+      <div id="globalAlert" class="alert"></div>
+
+      <div style="margin-bottom: 20px">
+        <a href="/dashboard.html" class="btn btn-outline">« Back to List</a>
+      </div>
+
+      <div class="server-header">
+        <h2>
+          <span id="controlHostname">Loading...</span>
+          <span
+            style="font-size: 18px; color: #777; font-weight: normal"
+            id="controlIpHeader"
+          ></span>
+        </h2>
+        <button id="refreshBtn" class="btn btn-success btn-sm">
+          <i class="fas fa-sync"></i> Refresh
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Information</div>
+        <div class="card-body">
+          <div class="info-row">
+            <label>Status:</label>
+            <div id="detailStatus">
+              <span class="badge badge-unknown">...</span>
+            </div>
+          </div>
+          <div class="info-row">
+            <label>Plan:</label>
+            <div id="detailPlan">-</div>
+          </div>
+          <div class="info-row">
+            <label>IPv4 Address:</label>
+            <div id="detailIp">-</div>
+          </div>
+          <div class="info-row">
+            <label>Created At:</label>
+            <div id="detailCreated">-</div>
+          </div>
+          <div class="info-row">
+            <label>Server ID:</label>
+            <div
+              id="detailId"
+              style="font-family: monospace; font-size: 12px; color: #666"
+            >
+              -
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 20px">
+        <div class="card-header">Control Panel</div>
+        <div class="card-body" style="padding: 30px">
+          <div class="control-buttons">
+            <button class="control-btn" onclick="app.serverAction('START')">
+              <i class="fas fa-play" style="color: #8dc63f"></i>
+              <span>Boot</span>
+            </button>
+            <button class="control-btn" onclick="app.serverAction('STOP')">
+              <i class="fas fa-power-off" style="color: #d9534f"></i>
+              <span>Shutdown</span>
+            </button>
+            <button class="control-btn" onclick="app.serverAction('DELETE')">
+              <i class="fas fa-trash" style="color: #d9534f"></i>
+              <span>Terminate</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+      const app = {
+        currentServerId: null,
+        plansMap: {},
+
+        init: async function () {
+          try {
+            const user = await window.API.getCurrentUser();
+            document.getElementById("userEmail").textContent =
+              user.identity.traits.email;
+
+            const urlParams = new URLSearchParams(window.location.search);
+            this.currentServerId = urlParams.get("id");
+
+            if (!this.currentServerId) {
+              alert("No server specified");
+              window.location.href = "/dashboard.html";
+              return;
+            }
+
+            window.API.connectWebSocket();
+            window.API.addWebSocketListener(this.handleWsMessage.bind(this));
+
+            await this.loadPlans();
+            await this.loadServerDetails();
+          } catch (e) {
+            window.location.href = "/login.html";
+          }
+        },
+
+        loadPlans: async function () {
+          try {
+            const data = await window.API.getPlans();
+            const plans = data._embedded ? data._embedded.plans : [];
+            plans.forEach((p) => (this.plansMap[p.id] = p));
+          } catch (e) {
+            console.error("Failed plans load");
+          }
+        },
+
+        loadServerDetails: async function () {
+          try {
+            const s = await window.API.getServer(this.currentServerId);
+            this.updateView(s);
+          } catch (e) {
+            this.showAlert("Failed to load server: " + e.message, "error");
+          }
+        },
+
+        formatDate: function (dateString) {
+          if (!dateString) return "-";
+          return new Date(dateString).toLocaleString();
+        },
+
+        updateView: function (s) {
+          if (!s) return;
+
+          document.getElementById("controlHostname").innerText = s.name;
+          const ipDisplay = s.IPv4Address || "No IP";
+          document.getElementById("controlIpHeader").innerText =
+            `(${ipDisplay})`;
+
+          const statusClass =
+            s.status === "RUNNING"
+              ? "badge-running"
+              : s.status === "STOPPED"
+                ? "badge-stopped"
+                : "badge-pending";
+          document.getElementById("detailStatus").innerHTML =
+            `<span class="badge ${statusClass}">${s.status}</span>`;
+
+          const plan = this.plansMap[s.planId];
+          document.getElementById("detailPlan").innerText = plan
+            ? plan.name
+            : "Unknown";
+          document.getElementById("detailIp").innerText = ipDisplay;
+          document.getElementById("detailCreated").innerText = this.formatDate(
+            s.createdAt,
+          );
+          document.getElementById("detailId").innerText = s.id;
+        },
+
+        serverAction: async function (action) {
+          this.showAlert(`Sending ${action} command...`, "info");
+          try {
+            const updatedServer = await window.API.performServerAction(
+              this.currentServerId,
+              action,
+            );
+
+            if (action === "DELETE") {
+              window.location.href = "/dashboard.html";
+            } else {
+              this.updateView(updatedServer);
+              this.showAlert(`Command ${action} accepted.`, "success");
+            }
+          } catch (e) {
+            this.showAlert(e.message, "error");
+          }
+        },
+
+        handleWsMessage: function (msg) {
+          if (msg.Type === "server.updated" && msg.Payload) {
+            if (msg.Payload.serverId === this.currentServerId) {
+              const p = msg.Payload;
+
+              const statusClass =
+                p.status === "RUNNING"
+                  ? "badge-running"
+                  : p.status === "STOPPED"
+                    ? "badge-stopped"
+                    : "badge-pending";
+              document.getElementById("detailStatus").innerHTML =
+                `<span class="badge ${statusClass}">${p.status}</span>`;
+
+              if (p.ip) {
+                document.getElementById("controlIpHeader").innerText =
+                  `(${p.ip})`;
+                document.getElementById("detailIp").innerText = p.ip;
+              }
+            }
+          }
+        },
+
+        showAlert: function (msg, type = "info") {
+          const el = document.getElementById("globalAlert");
+          el.className = `alert alert-${type}`;
+          el.textContent = msg;
+          el.style.display = "block";
+          setTimeout(() => (el.style.display = "none"), 4000);
+        },
+      };
+
+      document.addEventListener("DOMContentLoaded", () => {
+        app.init();
+        document
+          .getElementById("refreshBtn")
+          .addEventListener("click", () => app.loadServerDetails());
+      });
+    </script>
+  </body>
+</html>

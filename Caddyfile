@@ -1,0 +1,32 @@
+{
+    auto_https off
+}
+
+:80 {
+    log {
+        output stdout
+        format console
+    }
+
+    handle_path /auth/* {
+        reverse_proxy kratos:4433
+    }
+
+    handle /api/resources* {
+        reverse_proxy resources-service:2080
+    }
+
+    handle /api/hosting* {
+        reverse_proxy hosting-service:8080
+    }
+
+    handle /api/notification* {
+        reverse_proxy notification-service:1080
+    }
+
+    handle {
+        root * /srv
+        try_files {path} {path}/ /index.html
+        file_server
+    }
+}

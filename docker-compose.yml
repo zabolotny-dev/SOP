@@ -21,6 +21,41 @@ services:
     networks:
       - hosting-network
 
+  kratos-migrate:
+    image: oryd/kratos:latest
+    container_name: hosting-kratos-migrate
+    environment:
+      - DSN=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${KRATOS_DB_NAME}?sslmode=disable&max_conns=20&max_idle_conns=4
+    volumes:
+      - ./kratos:/etc/config/kratos
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hosting-network
+
+  kratos:
+    image: oryd/kratos:latest
+    container_name: hosting-kratos
+    restart: unless-stopped
+    ports:
+      - "4433:4433"
+      - "4434:4434"
+    environment:
+      - DSN=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${KRATOS_DB_NAME}?sslmode=disable&max_conns=20&max_idle_conns=4
+      - LOG_LEVEL=trace
+      - SECRETS_COOKIE_0=${KRATOS_SECRETS_COOKIE_0}
+      - SECRETS_CIPHER_0=${KRATOS_SECRETS_CIPHER_0}
+    volumes:
+      - ./kratos:/etc/config/kratos
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    networks:
+      - hosting-network
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: hosting-rabbitmq
@@ -117,8 +152,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-    ports:
-      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -176,6 +209,7 @@ services:
       - RES_DB_PASSWORD=${POSTGRES_PASSWORD}
       - RES_DB_HOST=${POSTGRES_HOST}:${POSTGRES_PORT}
       - RES_DB_NAME=${RES_DB_NAME}
+      - RES_TEMPO_PROBABILITY=${RES_TEMPO_PROBABILITY}
     healthcheck:
       test:
         [
@@ -190,8 +224,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-    ports:
-      - "2080:2080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -201,6 +233,62 @@ services:
         condition: service_healthy
       tempo:
         condition: service_started
+    networks:
+      - hosting-network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: hosting-notification-service/Dockerfile
+    image: sop-hosting-notification-service:latest
+    restart: unless-stopped
+    container_name: hosting-notification-service
+    environment:
+      - NOTI_TEMPO_PROBABILITY=${NOTI_TEMPO_PROBABILITY}
+      - NOTI_AMQP_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT}/
+      - NOTI_AMQP_QUEUENAME=${NOTI_AMQP_QUEUENAME}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:1010/health",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      hosting-service:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+    networks:
+      - hosting-network
+
+  caddy:
+    image: caddy:latest
+    container_name: hosting-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./web:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      kratos:
+        condition: service_started
+      hosting-service:
+        condition: service_healthy
+      provisioning-service:
+        condition: service_healthy
+      resources-service:
+        condition: service_healthy
     networks:
       - hosting-network
 
@@ -254,3 +342,5 @@ volumes:
   prometheus_data:
   grafana_data:
   tempo_data:
+  caddy_data:
+  caddy_config:

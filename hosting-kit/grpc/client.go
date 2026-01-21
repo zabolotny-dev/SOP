@@ -6,10 +6,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func NewClient(url string) (*grpc.ClientConn, error) {
+func NewClient(url string, log Logger) (*grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(url,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithUnaryInterceptor(clientLoggingInterceptor(log)))
 	if err != nil {
 		return nil, err
 	}

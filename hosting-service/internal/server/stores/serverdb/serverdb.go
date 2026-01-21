@@ -22,7 +22,7 @@ func NewStore(db *pgxpool.Pool) *Store {
 func (s *Store) FindByID(ctx context.Context, ID uuid.UUID) (server.Server, error) {
 	const q = `
 	SELECT 
-		id, plan_id, name, ipv4_address, pool_id, status, created_at
+		id, plan_id, name, ipv4_address, pool_id, status, created_at, owner_id
 	FROM 
 		servers 
 	WHERE 
@@ -51,9 +51,9 @@ func (s *Store) FindByID(ctx context.Context, ID uuid.UUID) (server.Server, erro
 func (s *Store) Create(ctx context.Context, srv server.Server) error {
 	const q = `
 	INSERT INTO servers 
-		(id, plan_id, name, ipv4_address, pool_id, status, created_at)
+		(id, plan_id, name, ipv4_address, pool_id, status, created_at, owner_id)
 	VALUES 
-		(@id, @plan_id, @name, @ipv4_address, @pool_id, @status, @created_at)`
+		(@id, @plan_id, @name, @ipv4_address, @pool_id, @status, @created_at, @owner_id)`
 
 	dbServer := toDBServer(srv)
 
@@ -65,6 +65,7 @@ func (s *Store) Create(ctx context.Context, srv server.Server) error {
 		"pool_id":      dbServer.PoolID,
 		"status":       dbServer.Status,
 		"created_at":   dbServer.CreatedAt,
+		"owner_id":     dbServer.OwnerID,
 	}
 
 	_, err := s.db.Exec(ctx, q, args)
@@ -75,20 +76,23 @@ func (s *Store) Create(ctx context.Context, srv server.Server) error {
 	return nil
 }
 
-func (s *Store) FindAll(ctx context.Context, pg page.Page) ([]server.Server, int, error) {
-	const qCount = `SELECT count(*) FROM servers`
+func (s *Store) FindAll(ctx context.Context, pg page.Page, userID uuid.UUID) ([]server.Server, int, error) {
+	const qCount = `SELECT count(*) FROM servers WHERE owner_id = @owner_id`
 
 	var total int
-	err := s.db.QueryRow(ctx, qCount).Scan(&total)
+	argsCount := pgx.NamedArgs{"owner_id": userID}
+	err := s.db.QueryRow(ctx, qCount, argsCount).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("db: %w", err)
 	}
 
 	const q = `
 	SELECT 
-		id, plan_id, name, ipv4_address, pool_id, status, created_at
+		id, plan_id, name, ipv4_address, pool_id, status, created_at, owner_id
 	FROM 
 		servers
+	WHERE
+		owner_id = @owner_id
 	ORDER BY 
 		created_at DESC
 	LIMIT 
@@ -97,8 +101,9 @@ func (s *Store) FindAll(ctx context.Context, pg page.Page) ([]server.Server, int
 		@offset`
 
 	args := pgx.NamedArgs{
-		"limit":  pg.Size(),
-		"offset": pg.Offset(),
+		"limit":    pg.Size(),
+		"offset":   pg.Offset(),
+		"owner_id": userID,
 	}
 
 	rows, err := s.db.Query(ctx, q, args)
@@ -122,7 +127,8 @@ func (s *Store) Update(ctx context.Context, srv server.Server) error {
 		name = @name,
 		ipv4_address = @ipv4_address,
 		pool_id = @pool_id,
-		status = @status
+		status = @status,
+		owner_id = @owner_id
 	WHERE 
 		id = @id`
 
@@ -135,6 +141,7 @@ func (s *Store) Update(ctx context.Context, srv server.Server) error {
 		"name":         dbServer.Name,
 		"ipv4_address": dbServer.IPv4Address,
 		"status":       dbServer.Status,
+		"owner_id":     dbServer.OwnerID,
 	}
 
 	_, err := s.db.Exec(ctx, q, args)

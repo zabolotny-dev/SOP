@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"hosting-contracts/topology"
 	"hosting-kit/debug"
+	"hosting-kit/logger"
 	"hosting-kit/messaging"
 	"hosting-kit/otel"
 	"hosting-provisioning-service/cmd/server/queue"
 	"hosting-provisioning-service/internal/provisioning"
 	"hosting-provisioning-service/internal/provisioning/extensions/provisioningotel"
 	"hosting-provisioning-service/internal/provisioning/stores/provisionmsg"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,16 +23,17 @@ import (
 )
 
 func main() {
-
 	ctx := context.Background()
 
-	if err := run(ctx); err != nil {
-		log.Printf("error: %v\n", err)
+	log := logger.New(os.Stdout, logger.LevelInfo, "provisioning-service", otel.GetTraceID)
+
+	if err := run(ctx, log); err != nil {
+		log.Error(ctx, "startup error", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, log *logger.Logger) error {
 
 	// -------------------------------------------------------------------------
 	// Configuration
@@ -85,7 +86,7 @@ func run(ctx context.Context) error {
 		defer cancel()
 
 		if err := teardown(cleanupCtx); err != nil {
-			log.Printf("telemetry shutdown error: %v", err)
+			log.Error(cleanupCtx, "telemetry shutdown error", "error", err)
 		}
 	}()
 
@@ -116,7 +117,7 @@ func run(ctx context.Context) error {
 		ctxShut, cancel := context.WithTimeout(ctx, cfg.App.ShutdownTimeout)
 		defer cancel()
 		if err := rqManager.Stop(ctxShut); err != nil {
-			log.Printf("Failed to shutdown rabbit manager: %v", err)
+			log.Error(ctxShut, "failed to shutdown rabbit manager", "error", err)
 		}
 	}()
 
@@ -133,6 +134,7 @@ func run(ctx context.Context) error {
 	err = queue.RegisterAll(rqManager, queue.Config{
 		ProvBus:   provisioningBus,
 		QueueName: cfg.AMQP.QueueName,
+		Log:       log,
 	})
 	if err != nil {
 		return fmt.Errorf("registering queue handlers: %w", err)
@@ -144,7 +146,7 @@ func run(ctx context.Context) error {
 	serverErrors := make(chan error, 1)
 
 	go func() {
-		log.Printf("main: Debug server listening on %s", cfg.Web.DebugHost)
+		log.Info(ctx, "HTTP Debug listening", "addr", cfg.Web.DebugHost)
 		serverErrors <- http.ListenAndServe(cfg.Web.DebugHost, debug.Mux())
 	}()
 
@@ -157,8 +159,8 @@ func run(ctx context.Context) error {
 	select {
 	case err := <-serverErrors:
 		return fmt.Errorf("server error: %w", err)
-	case <-shutdown:
-		log.Println("main: shutdown signal received")
+	case sig := <-shutdown:
+		log.Info(ctx, "start shutdown", "signal", sig.String())
 	}
 
 	return nil

@@ -3,24 +3,25 @@ package servergrp
 import (
 	"context"
 	"errors"
+	"hosting-kit/auth"
 	"hosting-kit/page"
 	"hosting-service/cmd/server/rest/gen"
 	"hosting-service/internal/server"
 )
 
-type Handlers struct {
+type ServerHandlers struct {
 	serverBus server.ExtBusiness
 	prefix    string
 }
 
-func New(serverBus server.ExtBusiness, prefix string) *Handlers {
-	return &Handlers{
+func New(serverBus server.ExtBusiness, prefix string) *ServerHandlers {
+	return &ServerHandlers{
 		serverBus: serverBus,
 		prefix:    prefix,
 	}
 }
 
-func (h *Handlers) ListServers(ctx context.Context, request gen.ListServersRequestObject) (gen.ListServersResponseObject, error) {
+func (s *ServerHandlers) ListServers(ctx context.Context, request gen.ListServersRequestObject) (gen.ListServersResponseObject, error) {
 	pageNum := 1
 	pageSize := 10
 
@@ -34,16 +35,26 @@ func (h *Handlers) ListServers(ctx context.Context, request gen.ListServersReque
 
 	page := page.Parse(pageNum, pageSize)
 
-	servers, count, err := h.serverBus.Search(ctx, page)
+	claims, err := auth.GetClaims(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return gen.ListServers200ApplicationHalPlusJSONResponse(toServerCollectionResponse(servers, page, count, h.prefix)), nil
+	servers, count, err := s.serverBus.Search(ctx, page, claims.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	return gen.ListServers200ApplicationHalPlusJSONResponse(toServerCollectionResponse(servers, page, count, s.prefix)), nil
 }
 
-func (h *Handlers) OrderServer(ctx context.Context, request gen.OrderServerRequestObject) (gen.OrderServerResponseObject, error) {
-	newServer, err := h.serverBus.Create(ctx, request.Body.Name, request.Body.PlanId)
+func (s *ServerHandlers) OrderServer(ctx context.Context, request gen.OrderServerRequestObject) (gen.OrderServerResponseObject, error) {
+	claims, err := auth.GetClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	newServer, err := s.serverBus.Create(ctx, request.Body.Name, request.Body.PlanId, claims.UserID)
 
 	if err != nil {
 		if errors.Is(err, server.ErrValidation) {
@@ -64,11 +75,16 @@ func (h *Handlers) OrderServer(ctx context.Context, request gen.OrderServerReque
 		return nil, err
 	}
 
-	return gen.OrderServer202ApplicationHalPlusJSONResponse(toServer(newServer, h.prefix)), nil
+	return gen.OrderServer202ApplicationHalPlusJSONResponse(toServer(newServer, s.prefix)), nil
 }
 
-func (h *Handlers) GetServerById(ctx context.Context, request gen.GetServerByIdRequestObject) (gen.GetServerByIdResponseObject, error) {
-	serverFound, err := h.serverBus.FindByID(ctx, request.ServerId)
+func (s *ServerHandlers) GetServerById(ctx context.Context, request gen.GetServerByIdRequestObject) (gen.GetServerByIdResponseObject, error) {
+	claims, err := auth.GetClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	serverFound, err := s.serverBus.FindByID(ctx, request.ServerId, claims.UserID)
 
 	if err != nil {
 		if errors.Is(err, server.ErrServerNotFound) {
@@ -79,21 +95,26 @@ func (h *Handlers) GetServerById(ctx context.Context, request gen.GetServerByIdR
 		return nil, err
 	}
 
-	return gen.GetServerById200ApplicationHalPlusJSONResponse(toServer(serverFound, h.prefix)), nil
+	return gen.GetServerById200ApplicationHalPlusJSONResponse(toServer(serverFound, s.prefix)), nil
 }
 
-func (h *Handlers) PerformServerAction(ctx context.Context, request gen.PerformServerActionRequestObject) (gen.PerformServerActionResponseObject, error) {
+func (s *ServerHandlers) PerformServerAction(ctx context.Context, request gen.PerformServerActionRequestObject) (gen.PerformServerActionResponseObject, error) {
 	id := request.ServerId
 	var err error
 	var newServer server.Server
 
+	claims, err := auth.GetClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	switch request.Body.Action {
 	case gen.START:
-		newServer, err = h.serverBus.Start(ctx, id)
+		newServer, err = s.serverBus.Start(ctx, id, claims.UserID)
 	case gen.STOP:
-		newServer, err = h.serverBus.Stop(ctx, id)
+		newServer, err = s.serverBus.Stop(ctx, id, claims.UserID)
 	case gen.DELETE:
-		newServer, err = h.serverBus.Delete(ctx, id)
+		newServer, err = s.serverBus.Delete(ctx, id, claims.UserID)
 	default:
 		return gen.PerformServerAction400JSONResponse{
 			BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "Unknown action"},
@@ -114,5 +135,5 @@ func (h *Handlers) PerformServerAction(ctx context.Context, request gen.PerformS
 		return nil, err
 	}
 
-	return gen.PerformServerAction202JSONResponse(toServer(newServer, h.prefix)), nil
+	return gen.PerformServerAction202JSONResponse(toServer(newServer, s.prefix)), nil
 }

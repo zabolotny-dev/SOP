@@ -2,12 +2,13 @@ package servergrp
 
 import (
 	"context"
-	"log"
 )
 
 func (h *handlers) HandleDLQ(ctx context.Context, body []byte, routingKey string) error {
-	log.Printf("Message dropped! RoutingKey: %s", routingKey)
-	log.Printf("Body: %s", string(body))
+	h.log.Error(ctx, "message dropped to DLQ",
+		"routing_key", routingKey,
+		"body", string(body),
+	)
 
 	return nil
 }

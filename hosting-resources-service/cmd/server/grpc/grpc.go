@@ -1,8 +1,9 @@
 package grpc
 
 import (
+	"hosting-kit/grpc"
+	"hosting-kit/logger"
 	"hosting-resources-service/cmd/server/grpc/handlers/poolgrp"
-	"hosting-resources-service/internal/platform/grpc"
 	"hosting-resources-service/internal/pool"
 	"net"
 
@@ -13,6 +14,7 @@ import (
 type Config struct {
 	PoolBus pool.ExtBusiness
 	Tracer  trace.Tracer
+	Log     *logger.Logger
 }
 
 type App struct {
@@ -20,7 +22,7 @@ type App struct {
 }
 
 func New(cfg Config) *App {
-	gs := grpc.NewServer(cfg.Tracer)
+	gs := grpc.NewServer(cfg.Tracer, cfg.Log)
 
 	poolgrp.Register(gs, cfg.PoolBus)
 
